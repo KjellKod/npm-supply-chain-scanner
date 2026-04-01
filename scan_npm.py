@@ -4,14 +4,14 @@ import json
 import argparse
 from pathlib import Path
 
-BAD_FILE = Path(__file__).parent / "bad-packages.txt"
+DEFAULT_BAD_FILE = Path(__file__).parent / "bad-packages.txt"
 
 # ------------------------------------------------------------------------------
 # Load compromised packages list
 # ------------------------------------------------------------------------------
-def load_bad_packages():
+def load_bad_packages(bad_file=None):
     bad = {}
-    with open(BAD_FILE) as f:
+    with open(bad_file or DEFAULT_BAD_FILE) as f:
         for line in f:
             line = line.strip()
             if not line or "=" not in line:
@@ -29,7 +29,7 @@ def load_bad_packages():
             bad[name] = version_list
     return bad
 
-BAD = load_bad_packages()
+BAD = None
 
 def is_bad(name, version):
     version = version.strip().lstrip("^~")
@@ -158,9 +158,18 @@ def inventory_all_packages(root):
 def main():
     parser = argparse.ArgumentParser(description="Scan npm packages for compromised dependencies")
     parser.add_argument("--root", default=".", help="Root directory to scan (default: current directory)")
+    parser.add_argument("--bad-file", action="append", default=[], help="Path to bad-packages list (repeatable; default: bad-packages.txt)")
     parser.add_argument("--inventory", action="store_true", help="List all found packages instead of scanning")
     args = parser.parse_args()
 
+    global BAD
+    if not args.bad_file:
+        print("Error: at least one --bad-file is required.")
+        sys.exit(2)
+    BAD = {}
+    for f in args.bad_file:
+        for name, versions in load_bad_packages(f).items():
+            BAD.setdefault(name, []).extend(v for v in versions if v not in BAD.get(name, []))
     root = Path(args.root)
 
     # inventory mode

@@ -1,0 +1,4 @@
+axios	= 1.14.1 || = 0.30.4
+plain-crypto-js	= 4.2.1
+@qqbrowser/openclaw-qbot	= 0.0.130
+@shadanai/openclaw	= 2026.3.31-1 || = 2026.3.31-2

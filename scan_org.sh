@@ -13,22 +13,40 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 KEEP=false
+BAD_FILES=()
+POSITIONAL=()
 
-# Parse --keep flag
-if [[ "${1:-}" == "--keep" ]]; then
-    KEEP=true
-    shift
-fi
+# Parse all args — flags can appear anywhere
+ARGS=("$@")
+i=0
+while [[ $i -lt ${#ARGS[@]} ]]; do
+    case "${ARGS[$i]}" in
+        --keep) KEEP=true ;;
+        --bad-file) i=$((i + 1)); BAD_FILES+=("${ARGS[$i]}") ;;
+        --bad-file=*) BAD_FILES+=("${ARGS[$i]#--bad-file=}") ;;
+        *) POSITIONAL+=("${ARGS[$i]}") ;;
+    esac
+    i=$((i + 1))
+done
 
-# Require org name
-if [[ $# -lt 1 ]]; then
-    echo "Usage: $0 [--keep] <org> [repo1 repo2 ...]"
+# Require --bad-file
+if [[ ${#BAD_FILES[@]} -eq 0 ]]; then
+    echo "Error: at least one --bad-file is required."
+    echo "Usage: $0 --bad-file FILE [--bad-file FILE2] [--keep] <org> [repo1 repo2 ...]"
     exit 2
 fi
 
-ORG="$1"
-shift
-SPECIFIC_REPOS=("$@")
+# Require org name
+if [[ ${#POSITIONAL[@]} -lt 1 ]]; then
+    echo "Usage: $0 --bad-file FILE [--keep] <org> [repo1 repo2 ...]"
+    exit 2
+fi
+
+ORG="${POSITIONAL[0]}"
+SPECIFIC_REPOS=()
+if [[ ${#POSITIONAL[@]} -gt 1 ]]; then
+    SPECIFIC_REPOS=("${POSITIONAL[@]:1}")
+fi
 
 # Check dependencies
 for cmd in gh python3 git; do
@@ -45,7 +63,7 @@ if ! gh auth status &>/dev/null; then
 fi
 
 # Get repo list
-if [[ ${#SPECIFIC_REPOS[@]} -gt 0 ]]; then
+if [[ "${#SPECIFIC_REPOS[@]}" -gt 0 ]]; then
     REPOS=("${SPECIFIC_REPOS[@]}")
     echo "Scanning ${#REPOS[@]} specified repo(s) in $ORG..."
 else
@@ -82,7 +100,12 @@ for repo in "${REPOS[@]}"; do
         continue
     fi
 
-    if ! python3 "$SCRIPT_DIR/scan_npm.py" --root "$TMPDIR/$repo"; then
+    SCAN_ARGS=(--root "$TMPDIR/$repo")
+    for bf in "${BAD_FILES[@]+"${BAD_FILES[@]}"}"; do
+        SCAN_ARGS+=(--bad-file "$bf")
+    done
+
+    if ! python3 "$SCRIPT_DIR/scan_npm.py" "${SCAN_ARGS[@]}"; then
         HITS=$((HITS + 1))
         HIT_REPOS+=("$repo")
     fi
