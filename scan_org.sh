@@ -50,7 +50,10 @@ if [[ ${#SPECIFIC_REPOS[@]} -gt 0 ]]; then
     echo "Scanning ${#REPOS[@]} specified repo(s) in $ORG..."
 else
     echo "Fetching repo list for org '$ORG'..."
-    mapfile -t REPOS < <(gh repo list "$ORG" --limit 500 --json name --jq '.[].name')
+    REPOS=()
+    while IFS= read -r line; do
+        REPOS+=("$line")
+    done < <(gh repo list "$ORG" --limit 500 --json name --jq '.[].name')
     echo "Found ${#REPOS[@]} repos."
 fi
 
