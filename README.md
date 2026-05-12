@@ -1,6 +1,6 @@
 # npm-supply-chain-scanner
 
-Version 0.0.1
+Version 0.1.1
 
 Scan npm projects for known compromised packages. Checks `package.json` and `package-lock.json` files against a known-compromised package/version list.
 
