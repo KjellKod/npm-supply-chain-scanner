@@ -30,6 +30,8 @@ bash scan_org.sh --bad-file bad-packages.txt <github-org-name>
 
 This clones up to 500 repos in `<github-org-name>` to a temporary directory and scans them using `bad-packages.txt`.
 
+The GitHub org or owner is a positional argument. Do not pass `--org`; use `bash scan_org.sh --tanstack-hunt <github-org-name>`, not `bash scan_org.sh --tanstack-hunt --org <github-org-name>`.
+
 ### Scan specific repos in an org
 
 ```bash
@@ -177,19 +179,14 @@ Example for repo owner `KjellKod` (replace with your own owner or org name):
 bash scan_org.sh --tanstack-hunt KjellKod
 ```
 
-Concrete examples:
+Package/version plus IOC org scan example:
 
 ```bash
-cd /Users/kjell/ws/extra/npm-supply-chain-scanner
+cd npm-supply-chain-scanner
 bash scan_org.sh \
   --bad-file 2026-05-tanstack-ghsa-g7cv-rxg3-hmpx.txt \
   --ioc-file 2026-05-tanstack-iocs.tsv \
-  KjellKod
-
-bash scan_org.sh \
-  --bad-file 2026-05-tanstack-ghsa-g7cv-rxg3-hmpx.txt \
-  --ioc-file 2026-05-tanstack-iocs.tsv \
-  onfleet
+  <github-org-name>
 ```
 
 Verification completed on the durable scanner branch:

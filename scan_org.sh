@@ -3,11 +3,14 @@
 # scan_org.sh -- Clone GitHub org repos and scan for compromised npm packages.
 #
 # Usage:
-#   bash scan_org.sh --bad-file FILE <org>                    # scan ALL repos in the org
+#   bash scan_org.sh --bad-file FILE <org>                    # scan up to 500 repos in the org
 #   bash scan_org.sh --bad-file FILE <org> repo1 repo2        # scan only specific repos
 #   bash scan_org.sh --tanstack-hunt <org> [repos...]         # run the TanStack IOC hunter
 #   bash scan_org.sh --bad-file FILE --ioc-file FILE <org>    # scan package/version and IOC rules
 #   bash scan_org.sh --keep --tanstack-hunt <org> [repos...]  # keep cloned repos after scan
+#
+# The org or owner name is positional. Use `... --tanstack-hunt <org>`, not
+# `... --tanstack-hunt --org <org>`.
 #
 # Version: 0.0.1
 
@@ -31,6 +34,11 @@ while [[ $i -lt ${#ARGS[@]} ]]; do
         --bad-file=*) BAD_FILES+=("${ARGS[$i]#--bad-file=}") ;;
         --ioc-file) i=$((i + 1)); IOC_FILES+=("${ARGS[$i]}") ;;
         --ioc-file=*) IOC_FILES+=("${ARGS[$i]#--ioc-file=}") ;;
+        --org|--org=*)
+            echo "Error: --org is not supported. Pass the GitHub org or owner as the final positional argument."
+            echo "Usage: $0 [--bad-file FILE ...] [--ioc-file FILE ...] [--tanstack-hunt] [--keep] <org> [repo1 repo2 ...]"
+            exit 2
+            ;;
         *) POSITIONAL+=("${ARGS[$i]}") ;;
     esac
     i=$((i + 1))
