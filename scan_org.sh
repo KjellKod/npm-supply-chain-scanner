@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 #
-# scan_org.sh -- Clone all repos in a GitHub org and scan for compromised npm packages.
+# scan_org.sh -- Clone GitHub org repos and scan for compromised npm packages.
 #
 # Usage:
-#   bash scan_org.sh <org>                    # scan ALL repos in the org
-#   bash scan_org.sh <org> repo1 repo2        # scan only specific repos
-#   bash scan_org.sh --keep <org> [repos...]  # keep cloned repos after scan
+#   bash scan_org.sh --bad-file FILE <org>                    # scan ALL repos in the org
+#   bash scan_org.sh --bad-file FILE <org> repo1 repo2        # scan only specific repos
+#   bash scan_org.sh --tanstack-hunt <org> [repos...]         # run the TanStack IOC hunter
+#   bash scan_org.sh --keep --tanstack-hunt <org> [repos...]  # keep cloned repos after scan
 #
 # Version: 0.0.1
 
@@ -13,6 +14,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 KEEP=false
+TANSTACK_HUNT=false
 BAD_FILES=()
 POSITIONAL=()
 
@@ -22,6 +24,7 @@ i=0
 while [[ $i -lt ${#ARGS[@]} ]]; do
     case "${ARGS[$i]}" in
         --keep) KEEP=true ;;
+        --tanstack-hunt) TANSTACK_HUNT=true ;;
         --bad-file) i=$((i + 1)); BAD_FILES+=("${ARGS[$i]}") ;;
         --bad-file=*) BAD_FILES+=("${ARGS[$i]#--bad-file=}") ;;
         *) POSITIONAL+=("${ARGS[$i]}") ;;
@@ -29,16 +32,16 @@ while [[ $i -lt ${#ARGS[@]} ]]; do
     i=$((i + 1))
 done
 
-# Require --bad-file
-if [[ ${#BAD_FILES[@]} -eq 0 ]]; then
-    echo "Error: at least one --bad-file is required."
-    echo "Usage: $0 --bad-file FILE [--bad-file FILE2] [--keep] <org> [repo1 repo2 ...]"
+# Require at least one scanner mode
+if [[ ${#BAD_FILES[@]} -eq 0 && "$TANSTACK_HUNT" == false ]]; then
+    echo "Error: at least one --bad-file or --tanstack-hunt is required."
+    echo "Usage: $0 [--bad-file FILE ...] [--tanstack-hunt] [--keep] <org> [repo1 repo2 ...]"
     exit 2
 fi
 
 # Require org name
 if [[ ${#POSITIONAL[@]} -lt 1 ]]; then
-    echo "Usage: $0 --bad-file FILE [--keep] <org> [repo1 repo2 ...]"
+    echo "Usage: $0 [--bad-file FILE ...] [--tanstack-hunt] [--keep] <org> [repo1 repo2 ...]"
     exit 2
 fi
 
@@ -100,12 +103,26 @@ for repo in "${REPOS[@]}"; do
         continue
     fi
 
-    SCAN_ARGS=(--root "$TMPDIR/$repo")
-    for bf in "${BAD_FILES[@]+"${BAD_FILES[@]}"}"; do
-        SCAN_ARGS+=(--bad-file "$bf")
-    done
+    REPO_HIT=false
 
-    if ! python3 "$SCRIPT_DIR/scan_npm.py" "${SCAN_ARGS[@]}"; then
+    if [[ ${#BAD_FILES[@]} -gt 0 ]]; then
+        SCAN_ARGS=(--root "$TMPDIR/$repo")
+        for bf in "${BAD_FILES[@]+"${BAD_FILES[@]}"}"; do
+            SCAN_ARGS+=(--bad-file "$bf")
+        done
+
+        if ! python3 "$SCRIPT_DIR/scan_npm.py" "${SCAN_ARGS[@]}"; then
+            REPO_HIT=true
+        fi
+    fi
+
+    if [[ "$TANSTACK_HUNT" == true ]]; then
+        if ! python3 "$SCRIPT_DIR/hunt_tanstack_2026_05.py" --root "$TMPDIR/$repo"; then
+            REPO_HIT=true
+        fi
+    fi
+
+    if [[ "$REPO_HIT" == true ]]; then
         HITS=$((HITS + 1))
         HIT_REPOS+=("$repo")
     fi
