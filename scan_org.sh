@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# scan_org.sh -- Clone all repos in a GitHub org and scan for compromised npm packages.
+# scan_org.sh -- Clone GitHub org repos and scan for compromised npm packages.
 #
 # Usage:
 #   bash scan_org.sh --bad-file FILE <org>                    # scan ALL repos in the org

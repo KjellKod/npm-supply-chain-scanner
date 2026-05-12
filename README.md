@@ -22,13 +22,13 @@ python3 scan_npm.py --root /path/to/project --bad-file bad-packages.txt
 
 This scans `/path/to/project` using the known-compromised package/version entries in `bad-packages.txt`. Without `--root`, it scans the current directory.
 
-### Scan all repos in a GitHub org
+### Scan up to 500 repos in a GitHub org
 
 ```bash
 bash scan_org.sh --bad-file bad-packages.txt <github-org-name>
 ```
 
-This clones each repo in `<github-org-name>` to a temporary directory and scans it using `bad-packages.txt`.
+This clones up to 500 repos in `<github-org-name>` to a temporary directory and scans them using `bad-packages.txt`.
 
 ### Scan specific repos in an org
 
@@ -48,7 +48,7 @@ By default, `scan_org.sh` deletes temporary clones when it finishes. `--keep` le
 
 ### Run the TanStack hunter against a GitHub org
 
-`scan_org.sh` clones matching repos to a temporary directory and runs the local hunter against each checkout.
+`scan_org.sh` clones up to 500 matching repos to a temporary directory and runs the local hunter against each checkout.
 
 ```bash
 bash scan_org.sh --tanstack-hunt <github-org-name>
