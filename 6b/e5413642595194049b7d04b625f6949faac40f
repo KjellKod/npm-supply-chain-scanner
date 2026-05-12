@@ -1,0 +1,15 @@
+hunt_tanstack_2026_05.py
+  ai_agent 133,209-210,231-232,287-288,304
+README.md
+  ai_agent 41-60,112
+scan_org.sh
+  ai_agent 6-9,17,27,35-38,44,106-123,125
+tests/test_tanstack_hunt.py
+  ai_agent 45-59,88-113,119,126-129,140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "6be5413642595194049b7d04b625f6949faac40f",
+  "prompts": {}
+}
