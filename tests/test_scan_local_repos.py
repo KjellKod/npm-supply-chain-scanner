@@ -1,8 +1,12 @@
+import io
 import json
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
+
+import scan_local_repos
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -70,6 +74,14 @@ class ScanLocalReposTests(unittest.TestCase):
         self.assertEqual(2, result.returncode)
         self.assertIn("not a directory", result.stderr)
         self.assertEqual("", result.stdout)
+
+    def test_main_empty_argv_does_not_fall_back_to_process_args(self):
+        with mock.patch("sys.argv", ["scan_local_repos.py", "/unexpected"]):
+            with mock.patch("sys.stderr", io.StringIO()):
+                with self.assertRaises(SystemExit) as raised:
+                    scan_local_repos.main([])
+
+        self.assertEqual(2, raised.exception.code)
 
 
 if __name__ == "__main__":
