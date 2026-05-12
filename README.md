@@ -169,7 +169,13 @@ bash scan_org.sh \
   <github-org-name>
 ```
 
-To run the full TanStack hunter against GitHub repos without cloning them manually, use `scan_org.sh --tanstack-hunt`.
+To run the full TanStack hunter against GitHub repos without cloning them manually, use `scan_org.sh --tanstack-hunt`. Pass the GitHub repo owner or org name as the final positional argument. The script creates fresh shallow clones in a temporary directory and cleans them up unless you pass `--keep`.
+
+Example for repo owner `KjellKod` (replace with your own owner or org name):
+
+```bash
+bash scan_org.sh --tanstack-hunt KjellKod
+```
 
 Concrete examples:
 
