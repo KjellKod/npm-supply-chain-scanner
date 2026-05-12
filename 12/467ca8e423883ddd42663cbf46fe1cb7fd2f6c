@@ -1,0 +1,11 @@
+scan_org.sh
+  ai_agent 3
+README.md
+  ai_agent 25,31,51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "12467ca8e423883ddd42663cbf46fe1cb7fd2f6c",
+  "prompts": {}
+}
