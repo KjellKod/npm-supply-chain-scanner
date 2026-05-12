@@ -1,8 +1,19 @@
 # npm-supply-chain-scanner
 
-Version 0.0.1
+Version 0.1.1
 
 Scan npm projects for known compromised packages. Checks `package.json` and `package-lock.json` files against a known-compromised package/version list.
+
+## Run this now
+
+For the May 2026 TanStack incident, this checks a GitHub org or repo owner with the official affected package/version table plus the local IOC rules.
+
+```bash
+bash scan_org.sh \
+  --bad-file 2026-05-tanstack-ghsa-g7cv-rxg3-hmpx.txt \
+  --ioc-file 2026-05-tanstack-iocs.tsv \
+  <github-org-name>
+```
 
 ## Requirements
 
@@ -162,7 +173,7 @@ python3 scan_npm.py \
   --ioc-file 2026-05-tanstack-iocs.tsv
 ```
 
-Scan a GitHub org or owner with the same package/version and IOC rules:
+### Scan a GitHub org or owner with package/version and IOC rules
 
 ```bash
 bash scan_org.sh \
