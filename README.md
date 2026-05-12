@@ -151,10 +151,22 @@ FINDINGS
 
 The hunter exits `1` when it finds any critical or warning evidence, and `0` when the tree is clean. `scan_local_repos.py` reports one final summary across local disk repos.
 
-You can also use the official GHSA package/version table with the standard scanner if you only need package/version matching:
+Use the official GHSA package/version table and IOC rules with the standard scanner:
 
 ```bash
-python3 scan_npm.py --root /path/to/project --bad-file 2026-05-tanstack-ghsa-g7cv-rxg3-hmpx.txt
+python3 scan_npm.py \
+  --root /path/to/project \
+  --bad-file 2026-05-tanstack-ghsa-g7cv-rxg3-hmpx.txt \
+  --ioc-file 2026-05-tanstack-iocs.tsv
+```
+
+Scan a GitHub org or owner with the same package/version and IOC rules:
+
+```bash
+bash scan_org.sh \
+  --bad-file 2026-05-tanstack-ghsa-g7cv-rxg3-hmpx.txt \
+  --ioc-file 2026-05-tanstack-iocs.tsv \
+  <github-org-name>
 ```
 
 To run the full TanStack hunter against GitHub repos without cloning them manually, use `scan_org.sh --tanstack-hunt`.
@@ -164,10 +176,19 @@ To run the full TanStack hunter against GitHub repos without cloning them manual
 For new supply-chain incidents, add three things together:
 
 1. A dated bad-file sourced from the official advisory package/version table.
-2. A dated read-only hunt script for incident-specific IOCs that do not fit package/version matching.
+2. A dated IOC file for strings, filenames, and path suffixes that do not fit package/version matching.
 3. Fixture tests proving the scanner sees manifests, lockfiles, installed package metadata, confirmed IOCs, and broader campaign warnings.
 
-Keep incident hunters read-only: parse local files, inspect lockfiles and installed metadata, and do not run package-manager install scripts.
+Keep incident scans read-only: parse local files, inspect lockfiles and installed metadata, and do not run package-manager install scripts.
+
+IOC files are tab-separated:
+
+```text
+Kind    Value   Severity    Description
+string  example.com critical    example network IOC
+file    payload.js  critical    payload filename
+path    .vscode/setup.mjs   warning reported persistence path
+```
 
 ## Exit codes
 

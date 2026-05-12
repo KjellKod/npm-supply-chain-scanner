@@ -1,0 +1,27 @@
+Kind	Value	Severity	Description
+string	@tanstack/setup	critical	malicious optional dependency package name
+string	github:tanstack/router#79ac49eedf774dd4b0cfa308722bc463cfe5885c	critical	malicious optional dependency git ref
+string	79ac49eedf774dd4b0cfa308722bc463cfe5885c	critical	orphan payload commit
+file	router_init.js	critical	malicious payload filename
+file	tanstack_runner.js	critical	malicious helper filename
+string	filev2.getsession.org	critical	exfiltration domain
+string	seed1.getsession.org	critical	exfiltration domain
+string	seed2.getsession.org	critical	exfiltration domain
+string	seed3.getsession.org	critical	exfiltration domain
+string	https://litter.catbox.moe/h8nc9u.js	critical	second-stage payload URL
+string	https://litter.catbox.moe/7rrc6l.mjs	critical	second-stage payload URL
+string	Linux-pnpm-store-6f9233a50def742c09fde54f56553d6b449a535adf87d4083690539f49ae4da11	critical	poisoned GitHub Actions cache key
+string	github.com/zblgg/configuration	critical	attacker fork
+string	65bf499d16a5e8d25ba95d69ec9790a6dd4a1f14	critical	malicious fork commit
+path	.claude/router_runtime.js	warning	reported persistence artifact
+path	.claude/setup.mjs	warning	reported persistence artifact
+path	.vscode/setup.mjs	warning	reported persistence artifact
+path	.local/bin/gh-token-monitor.sh	warning	reported persistence artifact
+path	.config/systemd/user/gh-token-monitor.service	warning	reported persistence artifact
+path	.github/workflows/codeql_analysis.yml	warning	reported suspicious workflow name
+path	.github/workflows/codeql_analysis.yaml	warning	reported suspicious workflow name
+string	node .vscode/setup.mjs	warning	reported Claude Code hook command
+string	node .claude/setup.mjs	warning	reported VS Code folder-open task command
+string	toJSON(secrets)	warning	workflow serializes all GitHub Actions secrets
+string	gh-token-monitor	warning	reported persistence service name
+string	api.masscan.cloud	warning	reported C2 endpoint in broader campaign writeups
