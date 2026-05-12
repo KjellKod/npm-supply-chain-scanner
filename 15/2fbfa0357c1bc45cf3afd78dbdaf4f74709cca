@@ -1,0 +1,13 @@
+README.md
+  ai_agent 87-107
+scan_local_repos.py
+  ai_agent 1-173
+tests/test_scan_local_repos.py
+  ai_agent 1-76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "152fbfa0357c1bc45cf3afd78dbdaf4f74709cca",
+  "prompts": {}
+}
