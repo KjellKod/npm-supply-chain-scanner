@@ -3,10 +3,14 @@
 # scan_org.sh -- Clone GitHub org repos and scan for compromised npm packages.
 #
 # Usage:
-#   bash scan_org.sh --bad-file FILE <org>                    # scan ALL repos in the org
+#   bash scan_org.sh --bad-file FILE <org>                    # scan up to 500 repos in the org
 #   bash scan_org.sh --bad-file FILE <org> repo1 repo2        # scan only specific repos
 #   bash scan_org.sh --tanstack-hunt <org> [repos...]         # run the TanStack IOC hunter
+#   bash scan_org.sh --bad-file FILE --ioc-file FILE <org>    # scan package/version and IOC rules
 #   bash scan_org.sh --keep --tanstack-hunt <org> [repos...]  # keep cloned repos after scan
+#
+# The org or owner name is positional. Use `... --tanstack-hunt <org>`, not
+# `... --tanstack-hunt --org <org>`.
 #
 # Version: 0.0.1
 
@@ -16,6 +20,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 KEEP=false
 TANSTACK_HUNT=false
 BAD_FILES=()
+IOC_FILES=()
 POSITIONAL=()
 
 # Parse all args — flags can appear anywhere
@@ -27,21 +32,28 @@ while [[ $i -lt ${#ARGS[@]} ]]; do
         --tanstack-hunt) TANSTACK_HUNT=true ;;
         --bad-file) i=$((i + 1)); BAD_FILES+=("${ARGS[$i]}") ;;
         --bad-file=*) BAD_FILES+=("${ARGS[$i]#--bad-file=}") ;;
+        --ioc-file) i=$((i + 1)); IOC_FILES+=("${ARGS[$i]}") ;;
+        --ioc-file=*) IOC_FILES+=("${ARGS[$i]#--ioc-file=}") ;;
+        --org|--org=*)
+            echo "Error: --org is not supported. Pass the GitHub org or owner as the final positional argument."
+            echo "Usage: $0 [--bad-file FILE ...] [--ioc-file FILE ...] [--tanstack-hunt] [--keep] <org> [repo1 repo2 ...]"
+            exit 2
+            ;;
         *) POSITIONAL+=("${ARGS[$i]}") ;;
     esac
     i=$((i + 1))
 done
 
 # Require at least one scanner mode
-if [[ ${#BAD_FILES[@]} -eq 0 && "$TANSTACK_HUNT" == false ]]; then
-    echo "Error: at least one --bad-file or --tanstack-hunt is required."
-    echo "Usage: $0 [--bad-file FILE ...] [--tanstack-hunt] [--keep] <org> [repo1 repo2 ...]"
+if [[ ${#BAD_FILES[@]} -eq 0 && ${#IOC_FILES[@]} -eq 0 && "$TANSTACK_HUNT" == false ]]; then
+    echo "Error: at least one --bad-file, --ioc-file, or --tanstack-hunt is required."
+    echo "Usage: $0 [--bad-file FILE ...] [--ioc-file FILE ...] [--tanstack-hunt] [--keep] <org> [repo1 repo2 ...]"
     exit 2
 fi
 
 # Require org name
 if [[ ${#POSITIONAL[@]} -lt 1 ]]; then
-    echo "Usage: $0 [--bad-file FILE ...] [--tanstack-hunt] [--keep] <org> [repo1 repo2 ...]"
+    echo "Usage: $0 [--bad-file FILE ...] [--ioc-file FILE ...] [--tanstack-hunt] [--keep] <org> [repo1 repo2 ...]"
     exit 2
 fi
 
@@ -105,10 +117,13 @@ for repo in "${REPOS[@]}"; do
 
     REPO_HIT=false
 
-    if [[ ${#BAD_FILES[@]} -gt 0 ]]; then
+    if [[ ${#BAD_FILES[@]} -gt 0 || ${#IOC_FILES[@]} -gt 0 ]]; then
         SCAN_ARGS=(--root "$TMPDIR/$repo")
         for bf in "${BAD_FILES[@]+"${BAD_FILES[@]}"}"; do
             SCAN_ARGS+=(--bad-file "$bf")
+        done
+        for ioc in "${IOC_FILES[@]+"${IOC_FILES[@]}"}"; do
+            SCAN_ARGS+=(--ioc-file "$ioc")
         done
 
         if ! python3 "$SCRIPT_DIR/scan_npm.py" "${SCAN_ARGS[@]}"; then

@@ -30,6 +30,8 @@ bash scan_org.sh --bad-file bad-packages.txt <github-org-name>
 
 This clones up to 500 repos in `<github-org-name>` to a temporary directory and scans them using `bad-packages.txt`.
 
+The GitHub org or owner is a positional argument. Do not pass `--org`; use `bash scan_org.sh --bad-file bad-packages.txt <github-org-name>`, not `bash scan_org.sh --bad-file bad-packages.txt --org <github-org-name>`.
+
 ### Scan specific repos in an org
 
 ```bash
@@ -151,23 +153,69 @@ FINDINGS
 
 The hunter exits `1` when it finds any critical or warning evidence, and `0` when the tree is clean. `scan_local_repos.py` reports one final summary across local disk repos.
 
-You can also use the official GHSA package/version table with the standard scanner if you only need package/version matching:
+Use the official GHSA package/version table and IOC rules with the standard scanner:
 
 ```bash
-python3 scan_npm.py --root /path/to/project --bad-file 2026-05-tanstack-ghsa-g7cv-rxg3-hmpx.txt
+python3 scan_npm.py \
+  --root /path/to/project \
+  --bad-file 2026-05-tanstack-ghsa-g7cv-rxg3-hmpx.txt \
+  --ioc-file 2026-05-tanstack-iocs.tsv
 ```
 
-To run the full TanStack hunter against GitHub repos without cloning them manually, use `scan_org.sh --tanstack-hunt`.
+Scan a GitHub org or owner with the same package/version and IOC rules:
+
+```bash
+bash scan_org.sh \
+  --bad-file 2026-05-tanstack-ghsa-g7cv-rxg3-hmpx.txt \
+  --ioc-file 2026-05-tanstack-iocs.tsv \
+  <github-org-name>
+```
+
+To run the full TanStack hunter against GitHub repos without cloning them manually, use `scan_org.sh --tanstack-hunt`. Pass the GitHub repo owner or org name as the first positional argument after flags; repo names may follow it. The script creates fresh shallow clones in a temporary directory and cleans them up unless you pass `--keep`.
+
+Example for repo owner `KjellKod` (replace with your own owner or org name):
+
+```bash
+bash scan_org.sh --tanstack-hunt KjellKod
+```
+
+Package/version plus IOC org scan example:
+
+```bash
+cd npm-supply-chain-scanner
+bash scan_org.sh \
+  --bad-file 2026-05-tanstack-ghsa-g7cv-rxg3-hmpx.txt \
+  --ioc-file 2026-05-tanstack-iocs.tsv \
+  <github-org-name>
+```
+
+Verification completed on the durable scanner branch:
+
+```bash
+python3 -m unittest discover -s tests
+python3 -m py_compile scan_npm.py hunt_tanstack_2026_05.py tests/test_scan_npm.py tests/test_tanstack_hunt.py
+python3 scan_npm.py --help && bash -n scan_org.sh
+python3 scan_npm.py --root . --bad-file 2026-05-tanstack-ghsa-g7cv-rxg3-hmpx.txt --ioc-file 2026-05-tanstack-iocs.tsv
+```
 
 ## Default incident response approach
 
 For new supply-chain incidents, add three things together:
 
 1. A dated bad-file sourced from the official advisory package/version table.
-2. A dated read-only hunt script for incident-specific IOCs that do not fit package/version matching.
+2. A dated IOC file for strings, filenames, and path suffixes that do not fit package/version matching.
 3. Fixture tests proving the scanner sees manifests, lockfiles, installed package metadata, confirmed IOCs, and broader campaign warnings.
 
-Keep incident hunters read-only: parse local files, inspect lockfiles and installed metadata, and do not run package-manager install scripts.
+Keep incident scans read-only: parse local files, inspect lockfiles and installed metadata, and do not run package-manager install scripts.
+
+IOC files are tab-separated:
+
+```text
+Kind    Value   Severity    Description
+string  example.com critical    example network IOC
+file    payload.js  critical    payload filename
+path    .vscode/setup.mjs   warning reported persistence path
+```
 
 ## Exit codes
 
