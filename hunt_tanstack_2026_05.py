@@ -130,7 +130,7 @@ TEXT_SUFFIXES = {
 }
 
 SKIP_DIRS = {".git", "__pycache__"}
-SELF_DIR = Path(__file__).resolve().parent
+SELF_PATH = Path(__file__).resolve()
 
 
 def normalize_version(version):
@@ -206,6 +206,8 @@ def walk_lock_v1_dependencies(path, deps, findings):
         name, meta = stack.pop()
         if not isinstance(meta, dict):
             continue
+        if name == "@tanstack/setup":
+            add_finding(findings, "confirmed IOC", path, "package-lock dependency: @tanstack/setup")
         version = meta.get("version")
         if version and is_affected(name, version):
             add_finding(findings, "affected package-lock dependency", path, f"{name}@{version}")
@@ -226,6 +228,8 @@ def scan_package_lock(path, findings):
                 continue
             name = meta.get("name") or extract_name_from_lock_key(key, data.get("name"))
             version = meta.get("version")
+            if name == "@tanstack/setup":
+                add_finding(findings, "confirmed IOC", path, f"package-lock package: {name} ({key or '<root>'})")
             if name and version and is_affected(name, version):
                 add_finding(findings, "affected package-lock package", path, f"{name}@{version} ({key or '<root>'})")
             for field in ("resolved", "version"):
@@ -280,7 +284,8 @@ def scan_lock_text_for_versions(path, text, findings):
             version_escaped = re.escape(version)
             patterns = (
                 rf"{escaped}@{version_escaped}",
-                rf"{escaped}[^\\n\\r]{{0,120}}version:\\s*[\"']?{version_escaped}[\"']?",
+                rf"{escaped}@npm:{version_escaped}",
+                rf"{escaped}@[^\n\r]{{0,160}}[\"']?:\s*[\n\r]+(?:[^\n\r]*[\n\r]+){{0,3}}[ \t]*version:?\s*[\"']?{version_escaped}[\"']?",
             )
             if any(re.search(pattern, text) for pattern in patterns):
                 add_finding(findings, "affected lockfile entry", path, f"{name}@{version}")
@@ -296,11 +301,8 @@ def iter_files(root):
             continue
         if any(part in SKIP_DIRS for part in path.parts):
             continue
-        try:
-            path.resolve().relative_to(SELF_DIR)
+        if path.resolve() == SELF_PATH:
             continue
-        except ValueError:
-            pass
         yield path
 
 

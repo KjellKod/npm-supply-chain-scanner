@@ -42,6 +42,21 @@ class TanStackHuntTests(unittest.TestCase):
             self.details_for(findings, "affected manifest dependency"),
         )
 
+    def test_scans_target_directories_under_script_directory(self):
+        with tempfile.TemporaryDirectory(prefix=".tanstack-hunt-", dir=REPO_ROOT) as td:
+            root = Path(td)
+            (root / "package.json").write_text(
+                json.dumps({"dependencies": {"@tanstack/react-router": "1.169.5"}}),
+                encoding="utf-8",
+            )
+
+            findings = self.scan(root)
+
+        self.assertIn(
+            "dependencies: @tanstack/react-router@1.169.5",
+            self.details_for(findings, "affected manifest dependency"),
+        )
+
     def test_finds_package_lock_and_installed_package_metadata(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -70,20 +85,48 @@ class TanStackHuntTests(unittest.TestCase):
         self.assertTrue(any("@tanstack/history@1.161.12" in detail for detail in lock_details))
         self.assertIn("@tanstack/router-core@1.169.8", metadata_details)
 
-    def test_finds_pnpm_and_yarn_lock_text_entries(self):
+    def test_finds_tanstack_setup_ioc_in_package_lock(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "package-lock.json").write_text(
+                json.dumps(
+                    {
+                        "lockfileVersion": 3,
+                        "packages": {
+                            "node_modules/@tanstack/setup": {
+                                "version": "0.0.1",
+                                "resolved": "https://registry.npmjs.org/@tanstack/setup/-/setup-0.0.1.tgz",
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            findings = self.scan(root)
+
+        self.assertIn(
+            "package-lock package: @tanstack/setup (node_modules/@tanstack/setup)",
+            self.details_for(findings, "confirmed IOC"),
+        )
+
+    def test_finds_realistic_pnpm_and_yarn_lock_text_entries(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             (root / "pnpm-lock.yaml").write_text(
                 """
 packages:
-  /@tanstack/react-start@1.167.71:
+  '@tanstack/react-start@1.167.71':
     resolution: {integrity: sha512-example}
 """,
                 encoding="utf-8",
             )
             (root / "yarn.lock").write_text(
                 """
-"@tanstack/vue-router@1.169.8":
+"@tanstack/vue-router@npm:1.169.8":
+  version: 1.169.8
+
+"@tanstack/solid-router@^1.169.0":
   version "1.169.8"
 """,
                 encoding="utf-8",
@@ -94,6 +137,7 @@ packages:
         details = self.details_for(findings, "affected lockfile entry")
         self.assertIn("@tanstack/react-start@1.167.71", details)
         self.assertIn("@tanstack/vue-router@1.169.8", details)
+        self.assertIn("@tanstack/solid-router@1.169.8", details)
 
     def test_finds_confirmed_manifest_and_file_iocs(self):
         with tempfile.TemporaryDirectory() as td:

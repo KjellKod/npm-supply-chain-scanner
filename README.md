@@ -38,6 +38,26 @@ bash scan_org.sh --bad-file bad-packages.txt <github-org-name> repo1 repo2
 bash scan_org.sh --bad-file bad-packages.txt --keep <github-org-name>
 ```
 
+### Run the TanStack hunter against a GitHub org
+
+`scan_org.sh` clones matching repos to a temporary directory and runs the local hunter against each checkout.
+
+```bash
+bash scan_org.sh --tanstack-hunt <github-org-name>
+```
+
+Scan specific repos with the TanStack hunter:
+
+```bash
+bash scan_org.sh --tanstack-hunt <github-org-name> repo1 repo2
+```
+
+Run both package/version matching and the TanStack IOC hunter:
+
+```bash
+bash scan_org.sh --bad-file 2026-05-tanstack-ghsa-g7cv-rxg3-hmpx.txt --tanstack-hunt <github-org-name>
+```
+
 ### Inventory mode (list all packages found)
 
 ```bash
@@ -88,6 +108,8 @@ You can also use the official GHSA package/version table with the standard scann
 ```bash
 python3 scan_npm.py --root /path/to/project --bad-file 2026-05-tanstack-ghsa-g7cv-rxg3-hmpx.txt
 ```
+
+To run the full TanStack hunter against GitHub repos without cloning them manually, use `scan_org.sh --tanstack-hunt`.
 
 ## Default incident response approach
 
