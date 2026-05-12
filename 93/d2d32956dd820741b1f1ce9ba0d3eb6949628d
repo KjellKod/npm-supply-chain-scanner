@@ -1,0 +1,11 @@
+scan_local_repos.py
+  ai_agent 105
+tests/test_scan_local_repos.py
+  ai_agent 1,7-9,78-84
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "93d2d32956dd820741b1f1ce9ba0d3eb6949628d",
+  "prompts": {}
+}
