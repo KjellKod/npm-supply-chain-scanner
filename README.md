@@ -84,6 +84,27 @@ Use `--json` when you want machine-readable findings:
 python3 hunt_tanstack_2026_05.py --root /path/to/project --json
 ```
 
+Scan all locally cloned repos that are accessible under one or more local directories:
+
+```bash
+cd npm-supply-chain-scanner
+python3 scan_local_repos.py /path/to/directory-with-repos
+```
+
+Scan multiple local directories:
+
+```bash
+python3 scan_local_repos.py /path/to/team-repos /path/to/personal-repos
+```
+
+The local repo scanner recursively discovers Git repos under the input directories, runs the TanStack hunter once per repo, writes per-repo logs to `hunt-logs/`, and prints one final summary with all findings. It exits `1` if any repo has findings, `2` if a scan error occurs, and `0` when all discovered repos are clean.
+
+Use a custom log directory when you want to keep outputs separate:
+
+```bash
+python3 scan_local_repos.py --logs-dir tanstack-hunt-logs /path/to/directory-with-repos
+```
+
 Clean output:
 
 ```text
