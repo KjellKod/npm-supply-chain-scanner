@@ -23,19 +23,19 @@ Without `--root`, scans the current directory.
 ### Scan all repos in a GitHub org
 
 ```bash
-bash scan_org.sh --bad-file bad-packages.txt onfleet
+bash scan_org.sh --bad-file bad-packages.txt <github-org-name>
 ```
 
 ### Scan specific repos in an org
 
 ```bash
-bash scan_org.sh --bad-file bad-packages.txt onfleet repo1 repo2
+bash scan_org.sh --bad-file bad-packages.txt <github-org-name> repo1 repo2
 ```
 
 ### Keep cloned repos after scanning
 
 ```bash
-bash scan_org.sh --bad-file bad-packages.txt --keep onfleet
+bash scan_org.sh --bad-file bad-packages.txt --keep <github-org-name>
 ```
 
 ### Inventory mode (list all packages found)
@@ -52,13 +52,38 @@ python3 -m unittest discover -s tests
 
 ### May 2026 TanStack incident hunt
 
-For GHSA-g7cv-rxg3-hmpx / CVE-2026-45321, use the read-only one-off hunter. It checks exact affected package/version pairs plus confirmed local IOCs like `@tanstack/setup`, the malicious git ref, `router_init.js`, `tanstack_runner.js`, getsession domains, and broader persistence artifacts reported in the campaign.
+For GHSA-g7cv-rxg3-hmpx / CVE-2026-45321, use the read-only one-off hunter from the repo root. It checks exact affected package/version pairs plus confirmed local IOCs like `@tanstack/setup`, the malicious git ref, `router_init.js`, `tanstack_runner.js`, getsession domains, and broader persistence artifacts reported in the campaign.
 
 ```bash
 python3 hunt_tanstack_2026_05.py --root /path/to/project
 ```
 
-You can also use the official GHSA package/version table with the standard scanner:
+Use `--json` when you want machine-readable findings:
+
+```bash
+python3 hunt_tanstack_2026_05.py --root /path/to/project --json
+```
+
+Clean output:
+
+```text
+No TanStack GHSA-g7cv-rxg3-hmpx package/version hits or configured IOCs found.
+```
+
+Example finding output:
+
+```text
+CRITICAL FINDINGS
+- affected manifest dependency | /path/to/project/package.json | dependencies: @tanstack/react-router@1.169.5
+- confirmed IOC | /path/to/project/package-lock.json | package-lock packages['node_modules/@tanstack/setup'].resolved: github:tanstack/router#79ac49eedf774dd4b0cfa308722bc463cfe5885c (malicious optional dependency git ref)
+
+WARNINGS / BROADER-CAMPAIGN HUNTS
+- suspicious persistence path | /path/to/project/.vscode/setup.mjs | reported persistence artifact
+```
+
+The hunter exits `1` when it finds any critical or warning evidence, and `0` when the tree is clean.
+
+You can also use the official GHSA package/version table with the standard scanner if you only need package/version matching:
 
 ```bash
 python3 scan_npm.py --root /path/to/project --bad-file 2026-05-tanstack-ghsa-g7cv-rxg3-hmpx.txt
