@@ -2,7 +2,7 @@
 
 Version 0.0.1
 
-Scan npm projects for known compromised packages. Checks `package.json` and `package-lock.json` files against a curated list of bad packages and versions (`bad-packages.txt`).
+Scan npm projects for known compromised packages. Checks `package.json` and `package-lock.json` files against a known-compromised package/version list.
 
 ## Requirements
 
@@ -12,13 +12,15 @@ Scan npm projects for known compromised packages. Checks `package.json` and `pac
 
 ## Usage
 
+`--bad-file` points to a tab-separated package/version list that the scanner should treat as compromised. The default example list is `bad-packages.txt`; incident-specific lists can be added as separate dated files, such as `2026-05-tanstack-ghsa-g7cv-rxg3-hmpx.txt`.
+
 ### Scan a local directory
 
 ```bash
 python3 scan_npm.py --root /path/to/project --bad-file bad-packages.txt
 ```
 
-Without `--root`, scans the current directory.
+This scans `/path/to/project` using the known-compromised package/version entries in `bad-packages.txt`. Without `--root`, it scans the current directory.
 
 ### Scan all repos in a GitHub org
 
@@ -26,17 +28,23 @@ Without `--root`, scans the current directory.
 bash scan_org.sh --bad-file bad-packages.txt <github-org-name>
 ```
 
+This clones each repo in `<github-org-name>` to a temporary directory and scans it using `bad-packages.txt`.
+
 ### Scan specific repos in an org
 
 ```bash
 bash scan_org.sh --bad-file bad-packages.txt <github-org-name> repo1 repo2
 ```
 
+This scans only `repo1` and `repo2` from `<github-org-name>`.
+
 ### Keep cloned repos after scanning
 
 ```bash
 bash scan_org.sh --bad-file bad-packages.txt --keep <github-org-name>
 ```
+
+By default, `scan_org.sh` deletes temporary clones when it finishes. `--keep` leaves those cloned repos on disk so you can inspect them after the run.
 
 ### Run the TanStack hunter against a GitHub org
 
@@ -122,7 +130,26 @@ WARNINGS / BROADER-CAMPAIGN HUNTS
 - suspicious persistence path | /path/to/project/.vscode/setup.mjs | reported persistence artifact
 ```
 
-The hunter exits `1` when it finds any critical or warning evidence, and `0` when the tree is clean.
+Local repo summary:
+
+```text
+TANSTACK LOCAL REPO SCAN SUMMARY
+================================
+Input directories:
+- /path/to/directory-with-repos
+Repos discovered:  2
+Repos with hits:   1
+Scan errors:       0
+Per-repo logs:     /path/to/output/hunt-logs
+
+FINDINGS
+- /path/to/directory-with-repos/example-repo
+  log: /path/to/output/hunt-logs/example-repo-abc123def456.log
+    CRITICAL FINDINGS
+    - affected manifest dependency | /path/to/directory-with-repos/example-repo/package.json | dependencies: @tanstack/react-router@1.169.5
+```
+
+The hunter exits `1` when it finds any critical or warning evidence, and `0` when the tree is clean. `scan_local_repos.py` reports one final summary across local disk repos.
 
 You can also use the official GHSA package/version table with the standard scanner if you only need package/version matching:
 
