@@ -5,8 +5,6 @@ import sys
 from pathlib import Path
 
 DEFAULT_BAD_FILE = Path(__file__).parent / "bad-packages.txt"
-SELF_DIR = Path(__file__).resolve().parent
-
 DEPENDENCY_SECTIONS = [
     "dependencies",
     "devDependencies",
@@ -148,11 +146,6 @@ def iter_files(root):
         if any(part in SKIP_DIRS for part in path.parts):
             continue
         resolved = path.resolve()
-        try:
-            resolved.relative_to(SELF_DIR)
-            continue
-        except ValueError:
-            pass
         if resolved in EXCLUDED_FILES:
             continue
         yield path
@@ -254,8 +247,8 @@ def scan_text_lockfile(path, results):
             escaped_version = re.escape(version)
             patterns = (
                 rf"{escaped_name}@{escaped_version}",
-                rf"{escaped_name}[^\\n\\r]{{0,160}}version:\\s*[\"']?{escaped_version}[\"']?",
-                rf"{escaped_name}[^\\n\\r]{{0,160}}version\\s+[\"']{escaped_version}[\"']",
+                rf"{escaped_name}[\s\S]{{0,160}}version:\s*[\"']?{escaped_version}[\"']?",
+                rf"{escaped_name}[\s\S]{{0,160}}version\s+[\"']{escaped_version}[\"']",
             )
             if any(re.search(pattern, text) for pattern in patterns):
                 add_result(results, "affected lockfile entry", path, f"{name}@{version}")

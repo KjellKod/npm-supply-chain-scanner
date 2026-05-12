@@ -62,12 +62,23 @@ class ScanNpmTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             bad_file = root / "bad.txt"
-            bad_file.write_text("@scope/pnpm\t= 1.0.0\n@scope/yarn\t= 2.0.0\n", encoding="utf-8")
+            bad_file.write_text(
+                "\n".join(
+                    [
+                        "@scope/pnpm\t= 1.0.0",
+                        "@scope/yarn\t= 2.0.0",
+                        "@scope/separate\t= 3.0.0",
+                    ]
+                ),
+                encoding="utf-8",
+            )
             (root / "pnpm-lock.yaml").write_text(
                 """
 packages:
   /@scope/pnpm@1.0.0:
     resolution: {integrity: sha512-example}
+  '@scope/separate':
+    version: 3.0.0
 """,
                 encoding="utf-8",
             )
@@ -84,6 +95,26 @@ packages:
         self.assertEqual(1, result.returncode)
         self.assertIn("@scope/pnpm@1.0.0", result.stdout)
         self.assertIn("@scope/yarn@2.0.0", result.stdout)
+        self.assertIn("@scope/separate@3.0.0", result.stdout)
+
+    def test_scans_repo_that_contains_the_scanner_script(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            bad_file = root / "bad.txt"
+            bad_file.write_text("@scope/pkg\t= 1.2.3\n", encoding="utf-8")
+            nested_repo = root / "scanner-copy"
+            nested_repo.mkdir()
+            (nested_repo / "scan_npm.py").write_text("# scanner script placeholder\n", encoding="utf-8")
+            (nested_repo / "package.json").write_text(
+                json.dumps({"dependencies": {"@scope/pkg": "1.2.3"}}),
+                encoding="utf-8",
+            )
+
+            result = run_scan(root, "--bad-file", str(bad_file))
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("scanner-copy/package.json", result.stdout)
+        self.assertIn("dependencies: @scope/pkg@1.2.3", result.stdout)
 
     def test_ioc_file_matches_strings_files_and_paths(self):
         with tempfile.TemporaryDirectory() as td:
