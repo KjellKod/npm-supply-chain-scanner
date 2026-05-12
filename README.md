@@ -171,6 +171,30 @@ bash scan_org.sh \
 
 To run the full TanStack hunter against GitHub repos without cloning them manually, use `scan_org.sh --tanstack-hunt`.
 
+Concrete examples:
+
+```bash
+cd /Users/kjell/ws/extra/npm-supply-chain-scanner
+bash scan_org.sh \
+  --bad-file 2026-05-tanstack-ghsa-g7cv-rxg3-hmpx.txt \
+  --ioc-file 2026-05-tanstack-iocs.tsv \
+  KjellKod
+
+bash scan_org.sh \
+  --bad-file 2026-05-tanstack-ghsa-g7cv-rxg3-hmpx.txt \
+  --ioc-file 2026-05-tanstack-iocs.tsv \
+  onfleet
+```
+
+Verification completed on the durable scanner branch:
+
+```bash
+python3 -m unittest discover -s tests
+python3 -m py_compile scan_npm.py hunt_tanstack_2026_05.py tests/test_scan_npm.py tests/test_tanstack_hunt.py
+python3 scan_npm.py --help && bash -n scan_org.sh
+python3 scan_npm.py --root . --bad-file 2026-05-tanstack-ghsa-g7cv-rxg3-hmpx.txt --ioc-file 2026-05-tanstack-iocs.tsv
+```
+
 ## Default incident response approach
 
 For new supply-chain incidents, add three things together:
