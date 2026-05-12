@@ -30,7 +30,7 @@ bash scan_org.sh --bad-file bad-packages.txt <github-org-name>
 
 This clones up to 500 repos in `<github-org-name>` to a temporary directory and scans them using `bad-packages.txt`.
 
-The GitHub org or owner is a positional argument. Do not pass `--org`; use `bash scan_org.sh --tanstack-hunt <github-org-name>`, not `bash scan_org.sh --tanstack-hunt --org <github-org-name>`.
+The GitHub org or owner is a positional argument. Do not pass `--org`; use `bash scan_org.sh --bad-file bad-packages.txt <github-org-name>`, not `bash scan_org.sh --bad-file bad-packages.txt --org <github-org-name>`.
 
 ### Scan specific repos in an org
 
