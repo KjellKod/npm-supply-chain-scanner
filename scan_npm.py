@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -19,7 +20,14 @@ LOCKFILE_NAMES = {
     "npm-shrinkwrap.json",
     "pnpm-lock.yaml",
     "yarn.lock",
+    "bun.lock",
+    "bun.lockb",
 }
+
+# Lifecycle hooks abused by install-time droppers. `postinstall` is excluded:
+# too many legitimate packages run local scripts there.
+LIFECYCLE_HOOKS = {"preinstall", "install"}
+LIFECYCLE_SCRIPT_RE = re.compile(r"^(?:node|bun)\s+(?:\./)?[\w.-]+\.(?:mjs|cjs|js)$")
 
 TEXT_SUFFIXES = {
     ".json",
@@ -85,10 +93,14 @@ def load_ioc_file(ioc_file):
             kind, value = parts[0].lower(), parts[1]
             if kind in {"kind", "type"}:
                 continue
-            if kind not in {"string", "file", "path"}:
+            if kind not in {"string", "file", "path", "sha256"}:
                 raise ValueError(f"{ioc_file}:{line_no}: unsupported IOC kind {kind!r}")
             if not value:
                 raise ValueError(f"{ioc_file}:{line_no}: empty IOC value")
+            if kind == "sha256":
+                value = value.lower()
+                if not re.fullmatch(r"[0-9a-f]{64}", value):
+                    raise ValueError(f"{ioc_file}:{line_no}: sha256 value must be 64 hex characters")
 
             severity = parts[2].lower() if len(parts) > 2 and parts[2] else "critical"
             if severity not in {"critical", "warning"}:
@@ -143,6 +155,10 @@ def iter_files(root):
     for path in root.rglob("*"):
         if path.is_dir():
             continue
+        # Regular files only. Opening a FIFO blocks forever waiting for a
+        # writer, and device files are unbounded, so either would hang a scan.
+        if not path.is_file():
+            continue
         if any(part in SKIP_DIRS for part in path.parts):
             continue
         resolved = path.resolve()
@@ -196,6 +212,22 @@ def scan_package_json(path, results, source_label="package.json"):
                     f"affected {source_label} dependency",
                     path,
                     f"{sec}: {name}@{version}",
+                )
+
+    scripts = data.get("scripts", {})
+    if isinstance(scripts, dict):
+        for hook, command in scripts.items():
+            if (
+                hook in LIFECYCLE_HOOKS
+                and isinstance(command, str)
+                and LIFECYCLE_SCRIPT_RE.match(command.strip())
+            ):
+                add_result(
+                    results,
+                    "suspicious lifecycle script",
+                    path,
+                    f"{hook}: {command.strip()}",
+                    severity="warning",
                 )
 
 
@@ -301,6 +333,37 @@ def scan_ioc_text(path, results, max_bytes):
             )
 
 
+def file_sha256(path, max_bytes):
+    try:
+        if path.stat().st_size > max_bytes:
+            return None
+        digest = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError:
+        return None
+
+
+def scan_ioc_hash(path, results, max_bytes):
+    hash_rules = [rule for rule in IOC_RULES if rule["kind"] == "sha256"]
+    if not hash_rules:
+        return
+    digest = file_sha256(path, max_bytes)
+    if not digest:
+        return
+    for rule in hash_rules:
+        if rule["value"] == digest:
+            add_result(
+                results,
+                "ioc sha256",
+                path,
+                describe_ioc(rule),
+                severity=rule["severity"],
+            )
+
+
 def describe_ioc(rule):
     if rule["description"]:
         return f"{rule['value']} ({rule['description']})"
@@ -359,10 +422,11 @@ def scan_root(root, max_file_mb=10):
             scan_package_json(path, results, source_label=source_label)
         elif path.name in {"package-lock.json", "npm-shrinkwrap.json"}:
             scan_package_lock(path, results)
-        elif path.name in {"pnpm-lock.yaml", "yarn.lock"}:
+        elif path.name in {"pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb"}:
             scan_text_lockfile(path, results)
 
         scan_ioc_text(path, results, max_bytes)
+        scan_ioc_hash(path, results, max_bytes)
 
     return dedupe_results(results)
 
@@ -440,9 +504,27 @@ def main():
     results = scan_root(root, max_file_mb=args.max_file_mb)
     print_results(results)
 
+    # Exit 1 only for critical findings; warnings-only exits 3 so org sweeps
+    # can surface heuristic noise without failing clean repos.
     if results:
-        sys.exit(1)
+        has_critical = any(r["severity"] == "critical" for r in results)
+        sys.exit(1 if has_critical else 3)
+
+
+def run_cli():
+    # An uncaught exception would exit 1, which the exit-code contract reserves
+    # for confirmed critical findings. Report crashes as scan errors instead.
+    try:
+        main()
+    except SystemExit:
+        raise
+    except KeyboardInterrupt:
+        print("\nError: scan interrupted.")
+        sys.exit(2)
+    except Exception as exc:
+        print(f"Error: unexpected scanner failure: {type(exc).__name__}: {exc}")
+        sys.exit(2)
 
 
 if __name__ == "__main__":
-    main()
+    run_cli()

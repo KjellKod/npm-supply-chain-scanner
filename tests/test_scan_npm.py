@@ -1,4 +1,6 @@
+import hashlib
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -146,6 +148,149 @@ packages:
         self.assertIn("payload.js (payload filename)", result.stdout)
         self.assertIn("WARNING | ioc path", result.stdout)
         self.assertIn(".vscode/setup.mjs (persistence path)", result.stdout)
+
+    def test_sha256_ioc_matches_renamed_payload(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            payload = b"malicious payload bytes"
+            digest = hashlib.sha256(payload).hexdigest()
+            ioc_file = root / "iocs.tsv"
+            ioc_file.write_text(
+                "Kind\tValue\tSeverity\tDescription\n"
+                f"sha256\t{digest.upper()}\tcritical\tknown payload hash\n",
+                encoding="utf-8",
+            )
+            (root / "totally-innocent.txt").write_bytes(payload)
+
+            result = run_scan(root, "--ioc-file", str(ioc_file))
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("CRITICAL | ioc sha256", result.stdout)
+        self.assertIn("totally-innocent.txt", result.stdout)
+        self.assertIn(digest, result.stdout)
+
+    def test_sha256_scan_does_not_block_on_a_fifo(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            ioc_file = root / "iocs.tsv"
+            ioc_file.write_text(
+                "sha256\t" + ("a" * 64) + "\tcritical\tsome payload\n",
+                encoding="utf-8",
+            )
+            # Opening a FIFO blocks until a writer appears, so an unguarded
+            # hash pass would hang here forever.
+            os.mkfifo(root / "payload.js")
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(REPO_ROOT / "scan_npm.py"),
+                    "--root",
+                    str(root),
+                    "--ioc-file",
+                    str(ioc_file),
+                ],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=30,
+            )
+
+        self.assertEqual(0, result.returncode)
+        self.assertIn("No compromised packages or IOCs found", result.stdout)
+
+    def test_sha256_ioc_value_must_be_hex(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            ioc_file = root / "iocs.tsv"
+            ioc_file.write_text("sha256\tnot-a-hash\tcritical\tbad\n", encoding="utf-8")
+
+            result = run_scan(root, "--ioc-file", str(ioc_file))
+
+        self.assertEqual(2, result.returncode)
+        self.assertIn("sha256 value must be 64 hex characters", result.stdout)
+
+    def test_flags_suspicious_lifecycle_scripts(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            bad_file = root / "bad.txt"
+            bad_file.write_text("@scope/unrelated\t= 1.0.0\n", encoding="utf-8")
+            (root / "package.json").write_text(
+                json.dumps(
+                    {
+                        "scripts": {
+                            "preinstall": "node ./setup.mjs",
+                            "install": "bun dropper.js",
+                            "postinstall": "node harmless.js",
+                            "build": "node build.js",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            result = run_scan(root, "--bad-file", str(bad_file))
+
+        # Warnings-only findings exit 3, not 1, so clean-but-noisy repos do not
+        # read as compromised in org sweeps.
+        self.assertEqual(3, result.returncode)
+        self.assertIn("WARNING | suspicious lifecycle script", result.stdout)
+        self.assertIn("preinstall: node ./setup.mjs", result.stdout)
+        self.assertIn("install: bun dropper.js", result.stdout)
+        self.assertNotIn("postinstall: node harmless.js", result.stdout)
+        self.assertNotIn("build: node build.js", result.stdout)
+
+    def test_bad_file_matches_bun_lockfile(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            bad_file = root / "bad.txt"
+            bad_file.write_text("keyv\t= 6.0.0\n", encoding="utf-8")
+            (root / "bun.lock").write_text(
+                """
+{
+  "packages": {
+    "keyv": ["keyv@6.0.0", "", {}, "sha512-example"]
+  }
+}
+""",
+                encoding="utf-8",
+            )
+
+            result = run_scan(root, "--bad-file", str(bad_file))
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("keyv@6.0.0", result.stdout)
+
+    def test_shai_hulud_2026_08_package_and_ioc_files_work_together(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "package.json").write_text(
+                json.dumps(
+                    {
+                        "dependencies": {"keyv": "^6.0.0"},
+                        "scripts": {"preinstall": "node setup.mjs"},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (root / "Math_Symbol.js").write_text("payload", encoding="utf-8")
+            (root / "exfil.log").write_text("POST npm-cache.com/router", encoding="utf-8")
+
+            result = run_scan(
+                root,
+                "--bad-file",
+                str(REPO_ROOT / "2026-08-shai-hulud-here-we-go-again.txt"),
+                "--ioc-file",
+                str(REPO_ROOT / "2026-08-shai-hulud-iocs.tsv"),
+            )
+
+        self.assertEqual(1, result.returncode)
+        self.assertIn("dependencies: keyv@^6.0.0", result.stdout)
+        self.assertIn("Math_Symbol.js (malicious payload filename)", result.stdout)
+        self.assertIn('"preinstall": "node setup.mjs" (malicious preinstall hook)', result.stdout)
+        self.assertIn("WARNING | suspicious lifecycle script", result.stdout)
+        self.assertIn("npm-cache.com (fallback exfiltration domain)", result.stdout)
 
     def test_tanstack_package_and_ioc_files_work_together(self):
         with tempfile.TemporaryDirectory() as td:

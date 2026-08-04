@@ -1,0 +1,12 @@
+Package	Version
+keyv	= 6.0.0
+flat-cache	= 6.1.24
+file-entry-cache	= 11.1.6
+cacheable-request	= 13.0.20
+cacheable	= 2.5.1
+@cacheable/memory	= 2.2.1
+cache-manager	= 7.2.10
+@cacheable/node-cache	= 3.1.2
+@cacheable/utils	= 2.5.1
+@cacheable/net	= 2.1.1
+ecto	= 5.0.1
