@@ -1,0 +1,43 @@
+tests/test_scan_org.py
+  s_1a4a544d949605::t_70f914d8be38d9 79
+  s_1a4a544d949605::t_8bdadf99893def 191-203
+  s_1a4a544d949605::t_70ef3aa00e56c2 64-66
+  s_1a4a544d949605::t_0a6675bdc1fb06 93-94
+  s_1a4a544d949605::t_faee10066745b8 204-216
+README.md
+  s_1a4a544d949605::t_8073580d07806c 205-207
+hunt_tanstack_2026_05.py
+  s_1a4a544d949605::t_8ed707bf7be3d0 388-392
+  s_1a4a544d949605::t_aa6b9f7717c368 396-407
+tests/test_scan_npm.py
+  s_1a4a544d949605::t_b5572811444d7f 3
+  s_1a4a544d949605::t_e0c857d2c76f3b 172-202
+tests/test_tanstack_hunt.py
+  s_1a4a544d949605::t_2976598d607c37 206-224
+scan_org.sh
+  s_1a4a544d949605::t_4509ef44ebf375 43-51,53,57-60
+  s_1a4a544d949605::t_776b60fe2e40b1 302-307
+  s_1a4a544d949605::t_e9deed09a725da 73-88,91
+  s_1a4a544d949605::t_e94712e7f0a8ae 41-42,52,54-56,61-64
+  s_1a4a544d949605::t_9a358ab4fb8128 145-147,149-153
+  s_1a4a544d949605::t_6c07f3da1fa442 102,108
+scan_npm.py
+  s_1a4a544d949605::t_546ef80e6b80d2 158-161
+  s_1a4a544d949605::t_fd919e34f16423 514-528,530
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "9ccabc709174b6d4aab4f22f3f58c8b6e9047024",
+  "prompts": {},
+  "sessions": {
+    "s_1a4a544d949605": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "43da59be-6227-47b5-bacc-9aef66ec6cb1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "KjellKod <kjell.hedstrom@gmail.com>"
+    }
+  }
+}
