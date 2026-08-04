@@ -1,0 +1,32 @@
+scan_org.sh
+  s_1a4a544d949605::t_d46e594f480c3e 215,217,219-227
+  s_1a4a544d949605::t_8fdf5019844be8 273,275,278
+  s_1a4a544d949605::t_e0b6045de794eb 60,71,77
+  s_1a4a544d949605::t_20b573e093c730 48
+  s_1a4a544d949605::t_4579c2ee7c13d2 123-125,129-133,138,143,146-148
+  s_1a4a544d949605::t_1036631a57a36c 34
+  s_1a4a544d949605::t_c89851d82a7102 13,22-27
+  s_1a4a544d949605::t_d709913e4f2141 158-165
+  s_1a4a544d949605::t_09757a4bd804c5 189-202
+  s_1a4a544d949605::t_78bf345eeab2e2 312-314
+README.md
+  s_1a4a544d949605::t_dccf20e349323c 74-83
+tests/test_scan_org.py
+  s_1a4a544d949605::t_ca44337a54fe6d 1-199
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "8227475ec8a7f3e64988d154d09591b1555a4832",
+  "prompts": {},
+  "sessions": {
+    "s_1a4a544d949605": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "43da59be-6227-47b5-bacc-9aef66ec6cb1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "KjellKod <kjell.hedstrom@gmail.com>"
+    }
+  }
+}
