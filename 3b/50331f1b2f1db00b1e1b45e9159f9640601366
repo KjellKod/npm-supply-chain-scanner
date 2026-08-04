@@ -1,0 +1,30 @@
+README.md
+  s_1a4a544d949605::t_66f4dc31dc318c 222
+  s_1a4a544d949605::t_f144b3d705c5b6 167
+scan_org.sh
+  s_1a4a544d949605::t_02eeed8946bb5f 164,169-177
+  s_1a4a544d949605::t_963478aae62c8a 359,364-366
+  s_1a4a544d949605::t_718ff883bd11c1 200
+  s_1a4a544d949605::t_3e8ef746a4172f 160
+  s_1a4a544d949605::t_921f3bc6063e41 271-276
+  s_1a4a544d949605::t_99dae64c37d93f 367-369
+tests/test_scan_org.py
+  s_1a4a544d949605::t_cd95b072ab45bb 47-48
+  s_1a4a544d949605::t_952d1fde27a3bf 212-216,218-248
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "3b50331f1b2f1db00b1e1b45e9159f9640601366",
+  "prompts": {},
+  "sessions": {
+    "s_1a4a544d949605": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "43da59be-6227-47b5-bacc-9aef66ec6cb1",
+        "model": "claude-opus-5"
+      },
+      "human_author": "KjellKod <kjell.hedstrom@gmail.com>"
+    }
+  }
+}
