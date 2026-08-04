@@ -71,6 +71,16 @@ This scans only `repo1` and `repo2` from `<github-org-name>`.
 bash scan_org.sh --limit 1500 --bad-file bad-packages.txt <github-org-name>
 ```
 
+### Archived repos
+
+Archived repos are scanned by default and tagged `(archived)` in the per-repo header and in the summary, so you can triage them at a glance. They are included because archiving only makes a repo read-only on GitHub: the code can still be cloned and `npm install`ed, which is exactly when an install-time dropper runs. An archived repo with a compromised lockfile is still a live risk.
+
+Skip them when you only care about actively developed code:
+
+```bash
+bash scan_org.sh --skip-archived --bad-file bad-packages.txt <github-org-name>
+```
+
 ### Check git history for commit-metadata IOCs
 
 `--git-history` clones with `--filter=blob:none` (full history, no file contents up front) instead of `--depth 1`, then checks every commit for known worm commit signatures (currently: author `claude`, subject `chore: update config`).

@@ -10,6 +10,7 @@
 #   bash scan_org.sh --bad-file FILE --ioc-file FILE <org>    # scan package/version and IOC rules
 #   bash scan_org.sh --git-history --bad-file FILE <org>      # also check commit-metadata IOCs (full-history clone)
 #   bash scan_org.sh --limit 1000 --bad-file FILE <org>       # raise the repo-list cap
+#   bash scan_org.sh --skip-archived --bad-file FILE <org>    # skip archived repos entirely
 #   bash scan_org.sh --keep --bad-file FILE <org>             # keep cloned repos after scan
 #
 # The org or owner name is positional. Use `... --bad-file FILE <org>`, not
@@ -18,13 +19,19 @@
 # When fetching the org repo list (no specific repos given), repo descriptions
 # are checked for the Shai-Hulud campaign marker (worm-created exfil repos).
 #
-# Version: 0.0.2
+# Archived repos are scanned by default and tagged "(archived)" in output.
+# Archived code is read-only on GitHub but still clonable and installable, so a
+# compromised lockfile there is still a live risk. Use --skip-archived to
+# exclude them when you only care about actively developed code.
+#
+# Version: 0.0.3
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 KEEP=false
 GIT_HISTORY=false
+SKIP_ARCHIVED=false
 HUNT_SCRIPT=""
 LIMIT=500
 BAD_FILES=()
@@ -38,6 +45,7 @@ while [[ $i -lt ${#ARGS[@]} ]]; do
     case "${ARGS[$i]}" in
         --keep) KEEP=true ;;
         --git-history) GIT_HISTORY=true ;;
+        --skip-archived) SKIP_ARCHIVED=true ;;
         --tanstack-hunt) HUNT_SCRIPT="$SCRIPT_DIR/hunt_tanstack_2026_05.py" ;;
         --hunt) i=$((i + 1)); HUNT_SCRIPT="${ARGS[$i]:?--hunt requires a script path}" ;;
         --hunt=*) HUNT_SCRIPT="${ARGS[$i]#--hunt=}" ;;
@@ -49,7 +57,7 @@ while [[ $i -lt ${#ARGS[@]} ]]; do
         --ioc-file=*) IOC_FILES+=("${ARGS[$i]#--ioc-file=}") ;;
         --org|--org=*)
             echo "Error: --org is not supported. Pass the GitHub org or owner as the final positional argument."
-            echo "Usage: $0 [--bad-file FILE ...] [--ioc-file FILE ...] [--hunt SCRIPT] [--git-history] [--limit N] [--keep] <org> [repo1 repo2 ...]"
+            echo "Usage: $0 [--bad-file FILE ...] [--ioc-file FILE ...] [--hunt SCRIPT] [--git-history] [--skip-archived] [--limit N] [--keep] <org> [repo1 repo2 ...]"
             exit 2
             ;;
         *) POSITIONAL+=("${ARGS[$i]}") ;;
@@ -60,13 +68,13 @@ done
 # Require at least one scanner mode
 if [[ ${#BAD_FILES[@]} -eq 0 && ${#IOC_FILES[@]} -eq 0 && -z "$HUNT_SCRIPT" ]]; then
     echo "Error: at least one --bad-file, --ioc-file, --hunt, or --tanstack-hunt is required."
-    echo "Usage: $0 [--bad-file FILE ...] [--ioc-file FILE ...] [--hunt SCRIPT] [--git-history] [--limit N] [--keep] <org> [repo1 repo2 ...]"
+    echo "Usage: $0 [--bad-file FILE ...] [--ioc-file FILE ...] [--hunt SCRIPT] [--git-history] [--skip-archived] [--limit N] [--keep] <org> [repo1 repo2 ...]"
     exit 2
 fi
 
 # Require org name
 if [[ ${#POSITIONAL[@]} -lt 1 ]]; then
-    echo "Usage: $0 [--bad-file FILE ...] [--ioc-file FILE ...] [--hunt SCRIPT] [--git-history] [--limit N] [--keep] <org> [repo1 repo2 ...]"
+    echo "Usage: $0 [--bad-file FILE ...] [--ioc-file FILE ...] [--hunt SCRIPT] [--git-history] [--skip-archived] [--limit N] [--keep] <org> [repo1 repo2 ...]"
     exit 2
 fi
 
@@ -112,21 +120,32 @@ check_git_history() {
 # Get repo list. When listing the org, also sweep repo descriptions for the
 # Shai-Hulud campaign marker (worm-created exfiltration repos).
 SUSPICIOUS_DESC=()
+# Archived repo names, space-delimited. bash 3.2 (macOS) has no associative
+# arrays, so membership is tested with a padded substring match.
+ARCHIVED_NAMES=" "
 if [[ "${#SPECIFIC_REPOS[@]}" -gt 0 ]]; then
     REPOS=("${SPECIFIC_REPOS[@]}")
     echo "Scanning ${#REPOS[@]} specified repo(s) in $ORG..."
+    for name in "${REPOS[@]}"; do
+        if [[ "$(gh repo view "$ORG/$name" --json isArchived --jq .isArchived 2>/dev/null)" == "true" ]]; then
+            ARCHIVED_NAMES="$ARCHIVED_NAMES$name "
+        fi
+    done
 else
     echo "Fetching repo list for org '$ORG' (limit $LIMIT)..."
     # Fetch into a variable first: a gh failure inside process substitution is
     # invisible to `set -e` and would silently produce an empty, "clean" scan.
-    if ! REPO_LIST="$(gh repo list "$ORG" --limit "$LIMIT" --json name,description --jq '.[] | [.name, (.description // "")] | @tsv')"; then
+    if ! REPO_LIST="$(gh repo list "$ORG" --limit "$LIMIT" --json name,description,isArchived --jq '.[] | [.name, (.description // ""), (.isArchived | tostring)] | @tsv')"; then
         echo "Error: 'gh repo list $ORG' failed. Check the org name and your gh auth."
         exit 2
     fi
     REPOS=()
-    while IFS=$'\t' read -r name description; do
+    while IFS=$'\t' read -r name description archived; do
         [[ -z "$name" ]] && continue
         REPOS+=("$name")
+        if [[ "${archived:-}" == "true" ]]; then
+            ARCHIVED_NAMES="$ARCHIVED_NAMES$name "
+        fi
         if [[ -n "${description:-}" ]]; then
             desc_lower="$(printf '%s' "$description" | tr '[:upper:]' '[:lower:]')"
             if [[ "$desc_lower" == *"shai-hulud"* ]]; then
@@ -136,6 +155,14 @@ else
         fi
     done <<< "$REPO_LIST"
     echo "Found ${#REPOS[@]} repos."
+    ARCHIVED_COUNT="$(printf '%s' "$ARCHIVED_NAMES" | wc -w | tr -d ' ')"
+    if [[ "$ARCHIVED_COUNT" -gt 0 ]]; then
+        if [[ "$SKIP_ARCHIVED" == true ]]; then
+            echo "Archived repos: $ARCHIVED_COUNT (skipping, --skip-archived)"
+        else
+            echo "Archived repos: $ARCHIVED_COUNT (scanned and tagged; use --skip-archived to exclude)"
+        fi
+    fi
     if [[ ${#REPOS[@]} -eq 0 ]]; then
         echo "Error: no repos found for '$ORG'. Check the org or owner name."
         exit 2
@@ -159,6 +186,20 @@ FAILED_CLONE=()
 HIT_REPOS=()
 WARN_REPOS=()
 ERROR_REPOS=()
+SKIPPED_ARCHIVED=()
+
+is_archived() {
+    [[ "$ARCHIVED_NAMES" == *" $1 "* ]]
+}
+
+# Repo name tagged with archived status, for summary lines.
+repo_label() {
+    if is_archived "$1"; then
+        printf '%s (archived)' "$1"
+    else
+        printf '%s' "$1"
+    fi
+}
 
 # Exit-code contract for scanners/hunters: 0 clean, 1 critical findings,
 # 3 warnings only. Anything else is a scan failure, not a compromise.
@@ -171,10 +212,19 @@ classify_exit() {
     esac
 }
 
+IDX=0
 for repo in "${REPOS[@]}"; do
-    TOTAL=$((TOTAL + 1))
+    IDX=$((IDX + 1))
     echo ""
-    echo "--- [$TOTAL/${#REPOS[@]}] $ORG/$repo ---"
+    echo "--- [$IDX/${#REPOS[@]}] $ORG/$(repo_label "$repo") ---"
+
+    if is_archived "$repo" && [[ "$SKIP_ARCHIVED" == true ]]; then
+        echo "  SKIP: archived repo (--skip-archived)"
+        SKIPPED_ARCHIVED+=("$repo")
+        continue
+    fi
+
+    TOTAL=$((TOTAL + 1))
 
     if [[ "$GIT_HISTORY" == true ]]; then
         CLONE_ARGS=(--filter=blob:none)
@@ -220,12 +270,12 @@ for repo in "${REPOS[@]}"; do
     fi
 
     if [[ "$REPO_HIT" == true ]]; then
-        HIT_REPOS+=("$repo")
+        HIT_REPOS+=("$(repo_label "$repo")")
     elif [[ "$REPO_WARN" == true ]]; then
-        WARN_REPOS+=("$repo")
+        WARN_REPOS+=("$(repo_label "$repo")")
     fi
     if [[ "$REPO_ERROR" == true ]]; then
-        ERROR_REPOS+=("$repo")
+        ERROR_REPOS+=("$(repo_label "$repo")")
     fi
 done
 
@@ -258,6 +308,9 @@ if [[ ${#ERROR_REPOS[@]} -gt 0 ]]; then
     for r in "${ERROR_REPOS[@]}"; do
         echo "  - $r"
     done
+fi
+if [[ ${#SKIPPED_ARCHIVED[@]} -gt 0 ]]; then
+    echo "Skipped (archived):  ${#SKIPPED_ARCHIVED[@]}"
 fi
 if [[ ${#FAILED_CLONE[@]} -gt 0 ]]; then
     echo "Failed to clone:     ${#FAILED_CLONE[@]}"
