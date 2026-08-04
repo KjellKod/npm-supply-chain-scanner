@@ -61,6 +61,9 @@ if [[ "$1" == "clone" ]]; then
   printf '%s' "${GIT_STUB_PKG:-{\}}" > "$dest/package.json"
   exit 0
 fi
+if [[ "$1" == "-C" && "${GIT_STUB_LOG_FAIL:-0}" == "1" ]]; then
+  exit 128
+fi
 exit 0
 """
 
@@ -73,7 +76,7 @@ def write_stub(directory, name, body):
 
 
 class ScanOrgTests(unittest.TestCase):
-    def run_scan_org(self, *args, repos="", pkg=None, gh_fail=False):
+    def run_scan_org(self, *args, repos="", pkg=None, gh_fail=False, git_log_fail=False):
         with tempfile.TemporaryDirectory() as td:
             stubs = Path(td) / "bin"
             stubs.mkdir()
@@ -87,6 +90,8 @@ class ScanOrgTests(unittest.TestCase):
             env["GIT_STUB_PKG"] = env["GH_STUB_PKG"]
             if gh_fail:
                 env["GH_STUB_FAIL"] = "1"
+            if git_log_fail:
+                env["GIT_STUB_LOG_FAIL"] = "1"
 
             return subprocess.run(
                 ["bash", str(REPO_ROOT / "scan_org.sh"), *args],
@@ -182,6 +187,32 @@ class ScanOrgTests(unittest.TestCase):
 
         self.assertEqual(2, result.returncode, result.stdout)
         self.assertIn("--limit must be a positive integer", result.stdout)
+
+    def test_git_log_failure_is_a_scan_error_not_a_clean_repo(self):
+        result = self.run_scan_org(
+            *self.scan_flags(),
+            "--git-history",
+            "testorg",
+            repos="live|a normal repo|false",
+            git_log_fail=True,
+        )
+
+        self.assertEqual(2, result.returncode, result.stdout)
+        self.assertIn("commit history was not checked", result.stdout)
+        self.assertIn("Repos with scan errors: 1", result.stdout)
+
+    def test_trailing_flag_without_a_value_is_a_usage_error(self):
+        for flag in ("--hunt", "--limit", "--bad-file", "--ioc-file"):
+            with self.subTest(flag=flag):
+                result = self.run_scan_org("testorg", flag)
+                self.assertEqual(2, result.returncode, result.stdout)
+                self.assertIn(f"{flag} requires a value", result.stdout)
+
+    def test_empty_inline_flag_value_is_a_usage_error(self):
+        result = self.run_scan_org("--hunt=", "testorg")
+
+        self.assertEqual(2, result.returncode, result.stdout)
+        self.assertIn("--hunt requires a value", result.stdout)
 
     def test_specific_repos_still_resolve_archived_status(self):
         result = self.run_scan_org(

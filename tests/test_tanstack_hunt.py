@@ -203,6 +203,25 @@ packages:
             )
         )
 
+    def test_hunter_exits_3_when_only_warnings_are_found(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            vscode = root / ".vscode"
+            vscode.mkdir()
+            (vscode / "setup.mjs").write_text("console.log('setup')", encoding="utf-8")
+
+            result = subprocess.run(
+                ["python3", str(REPO_ROOT / "hunt_tanstack_2026_05.py"), "--root", str(root)],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+
+        # Warnings-only must not be reported as a critical hit by scan_org.sh.
+        self.assertEqual(3, result.returncode, result.stdout)
+        self.assertIn("WARNING", result.stdout.upper())
+
     def test_standard_scanner_can_use_tanstack_bad_file(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

@@ -38,7 +38,30 @@ BAD_FILES=()
 IOC_FILES=()
 POSITIONAL=()
 
-# Parse all args — flags can appear anywhere
+USAGE="Usage: $0 [--bad-file FILE ...] [--ioc-file FILE ...] [--hunt SCRIPT] [--git-history] [--skip-archived] [--limit N] [--keep] <org> [repo1 repo2 ...]"
+
+usage_error() {
+    echo "Error: $1 requires a value."
+    echo "$USAGE"
+    exit 2
+}
+
+# Assert a value follows the flag at index $i. Bare "${ARGS[$i]:?msg}" would
+# exit 1, which the exit-code contract reserves for confirmed findings.
+require_next() {
+    if [[ $((i + 1)) -ge ${#ARGS[@]} || -z "${ARGS[$((i + 1))]}" ]]; then
+        usage_error "$1"
+    fi
+}
+
+# Assert an inline --flag=value form is not empty.
+require_value() {
+    if [[ -z "$2" ]]; then
+        usage_error "$1"
+    fi
+}
+
+# Parse all args. Flags can appear anywhere.
 ARGS=("$@")
 i=0
 while [[ $i -lt ${#ARGS[@]} ]]; do
@@ -47,17 +70,25 @@ while [[ $i -lt ${#ARGS[@]} ]]; do
         --git-history) GIT_HISTORY=true ;;
         --skip-archived) SKIP_ARCHIVED=true ;;
         --tanstack-hunt) HUNT_SCRIPT="$SCRIPT_DIR/hunt_tanstack_2026_05.py" ;;
-        --hunt) i=$((i + 1)); HUNT_SCRIPT="${ARGS[$i]:?--hunt requires a script path}" ;;
-        --hunt=*) HUNT_SCRIPT="${ARGS[$i]#--hunt=}" ;;
-        --limit) i=$((i + 1)); LIMIT="${ARGS[$i]:?--limit requires a number}" ;;
-        --limit=*) LIMIT="${ARGS[$i]#--limit=}" ;;
-        --bad-file) i=$((i + 1)); BAD_FILES+=("${ARGS[$i]:?--bad-file requires a path}") ;;
-        --bad-file=*) BAD_FILES+=("${ARGS[$i]#--bad-file=}") ;;
-        --ioc-file) i=$((i + 1)); IOC_FILES+=("${ARGS[$i]:?--ioc-file requires a path}") ;;
-        --ioc-file=*) IOC_FILES+=("${ARGS[$i]#--ioc-file=}") ;;
+        --hunt) require_next --hunt; i=$((i + 1)); HUNT_SCRIPT="${ARGS[$i]}" ;;
+        --hunt=*)
+            HUNT_SCRIPT="${ARGS[$i]#--hunt=}"
+            require_value --hunt "$HUNT_SCRIPT" ;;
+        --limit) require_next --limit; i=$((i + 1)); LIMIT="${ARGS[$i]}" ;;
+        --limit=*)
+            LIMIT="${ARGS[$i]#--limit=}"
+            require_value --limit "$LIMIT" ;;
+        --bad-file) require_next --bad-file; i=$((i + 1)); BAD_FILES+=("${ARGS[$i]}") ;;
+        --bad-file=*)
+            require_value --bad-file "${ARGS[$i]#--bad-file=}"
+            BAD_FILES+=("${ARGS[$i]#--bad-file=}") ;;
+        --ioc-file) require_next --ioc-file; i=$((i + 1)); IOC_FILES+=("${ARGS[$i]}") ;;
+        --ioc-file=*)
+            require_value --ioc-file "${ARGS[$i]#--ioc-file=}"
+            IOC_FILES+=("${ARGS[$i]#--ioc-file=}") ;;
         --org|--org=*)
             echo "Error: --org is not supported. Pass the GitHub org or owner as the final positional argument."
-            echo "Usage: $0 [--bad-file FILE ...] [--ioc-file FILE ...] [--hunt SCRIPT] [--git-history] [--skip-archived] [--limit N] [--keep] <org> [repo1 repo2 ...]"
+            echo "$USAGE"
             exit 2
             ;;
         *) POSITIONAL+=("${ARGS[$i]}") ;;
@@ -68,13 +99,13 @@ done
 # Require at least one scanner mode
 if [[ ${#BAD_FILES[@]} -eq 0 && ${#IOC_FILES[@]} -eq 0 && -z "$HUNT_SCRIPT" ]]; then
     echo "Error: at least one --bad-file, --ioc-file, --hunt, or --tanstack-hunt is required."
-    echo "Usage: $0 [--bad-file FILE ...] [--ioc-file FILE ...] [--hunt SCRIPT] [--git-history] [--skip-archived] [--limit N] [--keep] <org> [repo1 repo2 ...]"
+    echo "$USAGE"
     exit 2
 fi
 
 # Require org name
 if [[ ${#POSITIONAL[@]} -lt 1 ]]; then
-    echo "Usage: $0 [--bad-file FILE ...] [--ioc-file FILE ...] [--hunt SCRIPT] [--git-history] [--skip-archived] [--limit N] [--keep] <org> [repo1 repo2 ...]"
+    echo "$USAGE"
     exit 2
 fi
 
@@ -111,9 +142,15 @@ fi
 # Commit-metadata IOCs: Shai-Hulud worm commits authored as "claude" with
 # message "chore: update config". Requires history, so only useful with
 # --git-history (shallow clones have a single commit).
+# Prints matching commits. Returns 2 if `git log` itself failed, so a history
+# that was never actually read is reported as a scan error, not as clean. A
+# repo with no commits succeeds with empty output.
 check_git_history() {
-    local dir="$1"
-    { git -C "$dir" log --all --format='%h%x09%an%x09%s' 2>/dev/null || true; } |
+    local dir="$1" log_output=""
+    if ! log_output="$(git -C "$dir" log --all --format='%h%x09%an%x09%s' 2>/dev/null)"; then
+        return 2
+    fi
+    printf '%s' "$log_output" |
         awk -F'\t' 'tolower($2) == "claude" && $3 == "chore: update config" { print "  SUSPICIOUS COMMIT: " $1 " author=" $2 " subject=" $3 }'
 }
 
@@ -262,8 +299,12 @@ for repo in "${REPOS[@]}"; do
     fi
 
     if [[ "$GIT_HISTORY" == true ]]; then
-        COMMIT_HITS="$(check_git_history "$TMPDIR/$repo")"
-        if [[ -n "$COMMIT_HITS" ]]; then
+        GIT_STATUS=0
+        COMMIT_HITS="$(check_git_history "$TMPDIR/$repo")" || GIT_STATUS=$?
+        if [[ "$GIT_STATUS" -ne 0 ]]; then
+            echo "  SCAN ERROR: git log failed, commit history was not checked"
+            REPO_ERROR=true
+        elif [[ -n "$COMMIT_HITS" ]]; then
             echo "$COMMIT_HITS"
             REPO_HIT=true
         fi

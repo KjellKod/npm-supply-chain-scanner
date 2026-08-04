@@ -155,6 +155,10 @@ def iter_files(root):
     for path in root.rglob("*"):
         if path.is_dir():
             continue
+        # Regular files only. Opening a FIFO blocks forever waiting for a
+        # writer, and device files are unbounded, so either would hang a scan.
+        if not path.is_file():
+            continue
         if any(part in SKIP_DIRS for part in path.parts):
             continue
         resolved = path.resolve()
@@ -507,5 +511,20 @@ def main():
         sys.exit(1 if has_critical else 3)
 
 
+def run_cli():
+    # An uncaught exception would exit 1, which the exit-code contract reserves
+    # for confirmed critical findings. Report crashes as scan errors instead.
+    try:
+        main()
+    except SystemExit:
+        raise
+    except KeyboardInterrupt:
+        print("\nError: scan interrupted.")
+        sys.exit(2)
+    except Exception as exc:
+        print(f"Error: unexpected scanner failure: {type(exc).__name__}: {exc}")
+        sys.exit(2)
+
+
 if __name__ == "__main__":
-    main()
+    run_cli()

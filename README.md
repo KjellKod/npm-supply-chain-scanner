@@ -202,8 +202,9 @@ WARNINGS / BROADER-CAMPAIGN HUNTS
 Local repo summary:
 
 ```text
-TANSTACK LOCAL REPO SCAN SUMMARY
-================================
+LOCAL REPO SCAN SUMMARY
+=======================
+Hunter: /path/to/npm-supply-chain-scanner/hunt_tanstack_2026_05.py
 Input directories:
 - /path/to/directory-with-repos
 Repos discovered:  2

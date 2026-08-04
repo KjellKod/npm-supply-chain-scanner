@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -167,6 +168,37 @@ packages:
         self.assertIn("CRITICAL | ioc sha256", result.stdout)
         self.assertIn("totally-innocent.txt", result.stdout)
         self.assertIn(digest, result.stdout)
+
+    def test_sha256_scan_does_not_block_on_a_fifo(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            ioc_file = root / "iocs.tsv"
+            ioc_file.write_text(
+                "sha256\t" + ("a" * 64) + "\tcritical\tsome payload\n",
+                encoding="utf-8",
+            )
+            # Opening a FIFO blocks until a writer appears, so an unguarded
+            # hash pass would hang here forever.
+            os.mkfifo(root / "payload.js")
+
+            result = subprocess.run(
+                [
+                    "python3",
+                    str(REPO_ROOT / "scan_npm.py"),
+                    "--root",
+                    str(root),
+                    "--ioc-file",
+                    str(ioc_file),
+                ],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=30,
+            )
+
+        self.assertEqual(0, result.returncode)
+        self.assertIn("No compromised packages or IOCs found", result.stdout)
 
     def test_sha256_ioc_value_must_be_hex(self):
         with tempfile.TemporaryDirectory() as td:

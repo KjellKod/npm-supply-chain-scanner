@@ -385,8 +385,23 @@ def main():
     else:
         print_findings(findings)
 
-    return 1 if findings else 0
+    # Exit-code contract shared with scan_npm.py and scan_org.sh:
+    # 0 clean, 1 critical findings, 3 warnings only.
+    if not findings:
+        return 0
+    return 1 if any(f["severity"] == "critical" for f in findings) else 3
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Exit 1 is reserved for confirmed critical findings, so a crash must not
+    # masquerade as one.
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except KeyboardInterrupt:
+        print("\nError: hunt interrupted.")
+        sys.exit(2)
+    except Exception as exc:
+        print(f"Error: unexpected hunter failure: {type(exc).__name__}: {exc}")
+        sys.exit(2)
