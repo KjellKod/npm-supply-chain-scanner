@@ -44,8 +44,8 @@ case "$1" in
             exit 0
           fi
         done
-        printf 'false\n'
-        exit 0 ;;
+        # Unknown repo: real gh fails here, so archive status is undeterminable.
+        exit 1 ;;
     esac ;;
 esac
 exit 0
@@ -209,10 +209,43 @@ class ScanOrgTests(unittest.TestCase):
                 self.assertIn(f"{flag} requires a value", result.stdout)
 
     def test_empty_inline_flag_value_is_a_usage_error(self):
-        result = self.run_scan_org("--hunt=", "testorg")
+        for flag in ("--hunt", "--limit", "--bad-file", "--ioc-file"):
+            with self.subTest(flag=flag):
+                result = self.run_scan_org(f"{flag}=", "testorg")
+                self.assertEqual(2, result.returncode, result.stdout)
+                self.assertIn(f"{flag} requires a value", result.stdout)
 
-        self.assertEqual(2, result.returncode, result.stdout)
-        self.assertIn("--hunt requires a value", result.stdout)
+    def test_unknown_archive_status_scans_instead_of_skipping(self):
+        # gh repo view fails for an unlisted repo name, so archive status is
+        # unknown. --skip-archived must not skip it on a failed lookup.
+        result = self.run_scan_org(
+            *self.scan_flags(),
+            "--skip-archived",
+            "testorg",
+            "mystery",
+            repos="",
+        )
+
+        self.assertEqual(0, result.returncode, result.stdout)
+        self.assertIn("could not determine archive status for mystery", result.stdout)
+        self.assertIn("Archive status unknown: 1", result.stdout)
+        self.assertIn("Total repos scanned: 1", result.stdout)
+        self.assertNotIn("Skipped (archived)", result.stdout)
+
+    def test_suspicious_description_survives_skip_archived(self):
+        result = self.run_scan_org(
+            *self.scan_flags(),
+            "--skip-archived",
+            "testorg",
+            repos="exfil|Shai-Hulud: Here We Go Again|true",
+        )
+
+        # The repo's code scan is skipped, but an attacker-created repo is still
+        # reported and still fails the run.
+        self.assertEqual(1, result.returncode, result.stdout)
+        self.assertIn("SKIP: archived repo", result.stdout)
+        self.assertIn("not suppressed by --skip-archived", result.stdout)
+        self.assertIn("Suspicious repo descriptions: 1", result.stdout)
 
     def test_specific_repos_still_resolve_archived_status(self):
         result = self.run_scan_org(

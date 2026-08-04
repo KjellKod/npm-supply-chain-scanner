@@ -157,14 +157,24 @@ check_git_history() {
 # Get repo list. When listing the org, also sweep repo descriptions for the
 # Shai-Hulud campaign marker (worm-created exfiltration repos).
 SUSPICIOUS_DESC=()
+SUSPICIOUS_NAMES=" "
 # Archived repo names, space-delimited. bash 3.2 (macOS) has no associative
 # arrays, so membership is tested with a padded substring match.
 ARCHIVED_NAMES=" "
+UNKNOWN_ARCHIVED=()
 if [[ "${#SPECIFIC_REPOS[@]}" -gt 0 ]]; then
     REPOS=("${SPECIFIC_REPOS[@]}")
     echo "Scanning ${#REPOS[@]} specified repo(s) in $ORG..."
     for name in "${REPOS[@]}"; do
-        if [[ "$(gh repo view "$ORG/$name" --json isArchived --jq .isArchived 2>/dev/null)" == "true" ]]; then
+        # A failed lookup must not silently read as "not archived": that would
+        # drop the (archived) tag and let --skip-archived skip nothing. Unknown
+        # status always falls toward scanning, never toward skipping.
+        if ! ARCHIVED_FLAG="$(gh repo view "$ORG/$name" --json isArchived --jq .isArchived 2>/dev/null)"; then
+            echo "  WARNING: could not determine archive status for $name; scanning it and leaving it untagged."
+            UNKNOWN_ARCHIVED+=("$name")
+            continue
+        fi
+        if [[ "$ARCHIVED_FLAG" == "true" ]]; then
             ARCHIVED_NAMES="$ARCHIVED_NAMES$name "
         fi
     done
@@ -187,6 +197,7 @@ else
             desc_lower="$(printf '%s' "$description" | tr '[:upper:]' '[:lower:]')"
             if [[ "$desc_lower" == *"shai-hulud"* ]]; then
                 SUSPICIOUS_DESC+=("$name: $description")
+                SUSPICIOUS_NAMES="$SUSPICIOUS_NAMES$name "
                 echo "  SUSPICIOUS REPO DESCRIPTION: $name: $description"
             fi
         fi
@@ -257,6 +268,12 @@ for repo in "${REPOS[@]}"; do
 
     if is_archived "$repo" && [[ "$SKIP_ARCHIVED" == true ]]; then
         echo "  SKIP: archived repo (--skip-archived)"
+        if [[ "$SUSPICIOUS_NAMES" == *" $repo "* ]]; then
+            # The description sweep is a separate signal from the code scan. A
+            # worm-created exfil repo is an attacker artifact, so it is still
+            # reported and still fails the run even when its code is skipped.
+            echo "  NOTE: still reported for its repo description; that finding is not suppressed by --skip-archived"
+        fi
         SKIPPED_ARCHIVED+=("$repo")
         continue
     fi
@@ -339,8 +356,14 @@ if [[ ${#WARN_REPOS[@]} -gt 0 ]]; then
     done
 fi
 if [[ ${#SUSPICIOUS_DESC[@]} -gt 0 ]]; then
-    echo "Suspicious repo descriptions: ${#SUSPICIOUS_DESC[@]}"
+    echo "Suspicious repo descriptions: ${#SUSPICIOUS_DESC[@]} (reported even if the repo was skipped)"
     for r in "${SUSPICIOUS_DESC[@]}"; do
+        echo "  - $r"
+    done
+fi
+if [[ ${#UNKNOWN_ARCHIVED[@]} -gt 0 ]]; then
+    echo "Archive status unknown: ${#UNKNOWN_ARCHIVED[@]} (scanned, not tagged)"
+    for r in "${UNKNOWN_ARCHIVED[@]}"; do
         echo "  - $r"
     done
 fi

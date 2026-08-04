@@ -164,7 +164,7 @@ Scan multiple local directories:
 python3 scan_local_repos.py /path/to/team-repos /path/to/personal-repos
 ```
 
-The local repo scanner recursively discovers Git repos under the input directories, runs the TanStack hunter once per repo, writes per-repo logs to `hunt-logs/`, and prints one final summary with all findings. It exits `1` if any repo has findings, `2` if a scan error occurs, and `0` when all discovered repos are clean.
+The local repo scanner recursively discovers Git repos under the input directories, runs the TanStack hunter once per repo, writes per-repo logs to `hunt-logs/`, and prints one final summary with all findings. It exits `1` if any repo has findings (critical or warning-only), `2` if a scan error occurs, and `0` when all discovered repos are clean.
 
 Use a custom log directory when you want to keep outputs separate:
 
@@ -219,7 +219,7 @@ FINDINGS
     - affected manifest dependency | /path/to/directory-with-repos/example-repo/package.json | dependencies: @tanstack/react-router@1.169.5
 ```
 
-The hunter exits `1` when it finds any critical or warning evidence, and `0` when the tree is clean. `scan_local_repos.py` reports one final summary across local disk repos.
+The hunter follows the same exit-code contract as `scan_npm.py`: `0` when the tree is clean, `1` when at least one critical finding is present, `3` when only warnings were found, and `2` on an unexpected failure. `scan_local_repos.py` reports one final summary across local disk repos.
 
 Use the official GHSA package/version table and IOC rules with the standard scanner:
 
