@@ -3,22 +3,30 @@
 # scan_org.sh -- Clone GitHub org repos and scan for compromised npm packages.
 #
 # Usage:
-#   bash scan_org.sh --bad-file FILE <org>                    # scan up to 500 repos in the org
+#   bash scan_org.sh --bad-file FILE <org>                    # scan repos in the org (default limit 500)
 #   bash scan_org.sh --bad-file FILE <org> repo1 repo2        # scan only specific repos
-#   bash scan_org.sh --tanstack-hunt <org> [repos...]         # run the TanStack IOC hunter
+#   bash scan_org.sh --hunt SCRIPT <org> [repos...]           # run a one-off hunter script per repo
+#   bash scan_org.sh --tanstack-hunt <org> [repos...]         # alias for --hunt hunt_tanstack_2026_05.py
 #   bash scan_org.sh --bad-file FILE --ioc-file FILE <org>    # scan package/version and IOC rules
-#   bash scan_org.sh --keep --tanstack-hunt <org> [repos...]  # keep cloned repos after scan
+#   bash scan_org.sh --git-history --bad-file FILE <org>      # also check commit-metadata IOCs (full-history clone)
+#   bash scan_org.sh --limit 1000 --bad-file FILE <org>       # raise the repo-list cap
+#   bash scan_org.sh --keep --bad-file FILE <org>             # keep cloned repos after scan
 #
-# The org or owner name is positional. Use `... --tanstack-hunt <org>`, not
-# `... --tanstack-hunt --org <org>`.
+# The org or owner name is positional. Use `... --bad-file FILE <org>`, not
+# `... --bad-file FILE --org <org>`.
 #
-# Version: 0.0.1
+# When fetching the org repo list (no specific repos given), repo descriptions
+# are checked for the Shai-Hulud campaign marker (worm-created exfil repos).
+#
+# Version: 0.0.2
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 KEEP=false
-TANSTACK_HUNT=false
+GIT_HISTORY=false
+HUNT_SCRIPT=""
+LIMIT=500
 BAD_FILES=()
 IOC_FILES=()
 POSITIONAL=()
@@ -29,14 +37,19 @@ i=0
 while [[ $i -lt ${#ARGS[@]} ]]; do
     case "${ARGS[$i]}" in
         --keep) KEEP=true ;;
-        --tanstack-hunt) TANSTACK_HUNT=true ;;
-        --bad-file) i=$((i + 1)); BAD_FILES+=("${ARGS[$i]}") ;;
+        --git-history) GIT_HISTORY=true ;;
+        --tanstack-hunt) HUNT_SCRIPT="$SCRIPT_DIR/hunt_tanstack_2026_05.py" ;;
+        --hunt) i=$((i + 1)); HUNT_SCRIPT="${ARGS[$i]:?--hunt requires a script path}" ;;
+        --hunt=*) HUNT_SCRIPT="${ARGS[$i]#--hunt=}" ;;
+        --limit) i=$((i + 1)); LIMIT="${ARGS[$i]:?--limit requires a number}" ;;
+        --limit=*) LIMIT="${ARGS[$i]#--limit=}" ;;
+        --bad-file) i=$((i + 1)); BAD_FILES+=("${ARGS[$i]:?--bad-file requires a path}") ;;
         --bad-file=*) BAD_FILES+=("${ARGS[$i]#--bad-file=}") ;;
-        --ioc-file) i=$((i + 1)); IOC_FILES+=("${ARGS[$i]}") ;;
+        --ioc-file) i=$((i + 1)); IOC_FILES+=("${ARGS[$i]:?--ioc-file requires a path}") ;;
         --ioc-file=*) IOC_FILES+=("${ARGS[$i]#--ioc-file=}") ;;
         --org|--org=*)
             echo "Error: --org is not supported. Pass the GitHub org or owner as the final positional argument."
-            echo "Usage: $0 [--bad-file FILE ...] [--ioc-file FILE ...] [--tanstack-hunt] [--keep] <org> [repo1 repo2 ...]"
+            echo "Usage: $0 [--bad-file FILE ...] [--ioc-file FILE ...] [--hunt SCRIPT] [--git-history] [--limit N] [--keep] <org> [repo1 repo2 ...]"
             exit 2
             ;;
         *) POSITIONAL+=("${ARGS[$i]}") ;;
@@ -45,15 +58,15 @@ while [[ $i -lt ${#ARGS[@]} ]]; do
 done
 
 # Require at least one scanner mode
-if [[ ${#BAD_FILES[@]} -eq 0 && ${#IOC_FILES[@]} -eq 0 && "$TANSTACK_HUNT" == false ]]; then
-    echo "Error: at least one --bad-file, --ioc-file, or --tanstack-hunt is required."
-    echo "Usage: $0 [--bad-file FILE ...] [--ioc-file FILE ...] [--tanstack-hunt] [--keep] <org> [repo1 repo2 ...]"
+if [[ ${#BAD_FILES[@]} -eq 0 && ${#IOC_FILES[@]} -eq 0 && -z "$HUNT_SCRIPT" ]]; then
+    echo "Error: at least one --bad-file, --ioc-file, --hunt, or --tanstack-hunt is required."
+    echo "Usage: $0 [--bad-file FILE ...] [--ioc-file FILE ...] [--hunt SCRIPT] [--git-history] [--limit N] [--keep] <org> [repo1 repo2 ...]"
     exit 2
 fi
 
 # Require org name
 if [[ ${#POSITIONAL[@]} -lt 1 ]]; then
-    echo "Usage: $0 [--bad-file FILE ...] [--ioc-file FILE ...] [--tanstack-hunt] [--keep] <org> [repo1 repo2 ...]"
+    echo "Usage: $0 [--bad-file FILE ...] [--ioc-file FILE ...] [--hunt SCRIPT] [--git-history] [--limit N] [--keep] <org> [repo1 repo2 ...]"
     exit 2
 fi
 
@@ -61,6 +74,16 @@ ORG="${POSITIONAL[0]}"
 SPECIFIC_REPOS=()
 if [[ ${#POSITIONAL[@]} -gt 1 ]]; then
     SPECIFIC_REPOS=("${POSITIONAL[@]:1}")
+fi
+
+if [[ -n "$HUNT_SCRIPT" && ! -f "$HUNT_SCRIPT" ]]; then
+    echo "Error: hunter script not found: $HUNT_SCRIPT"
+    exit 2
+fi
+
+if ! [[ "$LIMIT" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Error: --limit must be a positive integer, got: $LIMIT"
+    exit 2
 fi
 
 # Check dependencies
@@ -77,17 +100,49 @@ if ! gh auth status &>/dev/null; then
     exit 2
 fi
 
-# Get repo list
+# Commit-metadata IOCs: Shai-Hulud worm commits authored as "claude" with
+# message "chore: update config". Requires history, so only useful with
+# --git-history (shallow clones have a single commit).
+check_git_history() {
+    local dir="$1"
+    { git -C "$dir" log --all --format='%h%x09%an%x09%s' 2>/dev/null || true; } |
+        awk -F'\t' 'tolower($2) == "claude" && $3 == "chore: update config" { print "  SUSPICIOUS COMMIT: " $1 " author=" $2 " subject=" $3 }'
+}
+
+# Get repo list. When listing the org, also sweep repo descriptions for the
+# Shai-Hulud campaign marker (worm-created exfiltration repos).
+SUSPICIOUS_DESC=()
 if [[ "${#SPECIFIC_REPOS[@]}" -gt 0 ]]; then
     REPOS=("${SPECIFIC_REPOS[@]}")
     echo "Scanning ${#REPOS[@]} specified repo(s) in $ORG..."
 else
-    echo "Fetching repo list for org '$ORG'..."
+    echo "Fetching repo list for org '$ORG' (limit $LIMIT)..."
+    # Fetch into a variable first: a gh failure inside process substitution is
+    # invisible to `set -e` and would silently produce an empty, "clean" scan.
+    if ! REPO_LIST="$(gh repo list "$ORG" --limit "$LIMIT" --json name,description --jq '.[] | [.name, (.description // "")] | @tsv')"; then
+        echo "Error: 'gh repo list $ORG' failed. Check the org name and your gh auth."
+        exit 2
+    fi
     REPOS=()
-    while IFS= read -r line; do
-        REPOS+=("$line")
-    done < <(gh repo list "$ORG" --limit 500 --json name --jq '.[].name')
+    while IFS=$'\t' read -r name description; do
+        [[ -z "$name" ]] && continue
+        REPOS+=("$name")
+        if [[ -n "${description:-}" ]]; then
+            desc_lower="$(printf '%s' "$description" | tr '[:upper:]' '[:lower:]')"
+            if [[ "$desc_lower" == *"shai-hulud"* ]]; then
+                SUSPICIOUS_DESC+=("$name: $description")
+                echo "  SUSPICIOUS REPO DESCRIPTION: $name: $description"
+            fi
+        fi
+    done <<< "$REPO_LIST"
     echo "Found ${#REPOS[@]} repos."
+    if [[ ${#REPOS[@]} -eq 0 ]]; then
+        echo "Error: no repos found for '$ORG'. Check the org or owner name."
+        exit 2
+    fi
+    if [[ ${#REPOS[@]} -eq $LIMIT ]]; then
+        echo "WARNING: repo list hit the --limit cap ($LIMIT); some repos may be missing. Re-run with a higher --limit."
+    fi
 fi
 
 # Create temp directory
@@ -100,22 +155,41 @@ fi
 
 # Scan each repo
 TOTAL=0
-HITS=0
 FAILED_CLONE=()
 HIT_REPOS=()
+WARN_REPOS=()
+ERROR_REPOS=()
+
+# Exit-code contract for scanners/hunters: 0 clean, 1 critical findings,
+# 3 warnings only. Anything else is a scan failure, not a compromise.
+classify_exit() {
+    case "$1" in
+        0) ;;
+        1) REPO_HIT=true ;;
+        3) REPO_WARN=true ;;
+        *) echo "  SCAN ERROR: exit status $1"; REPO_ERROR=true ;;
+    esac
+}
 
 for repo in "${REPOS[@]}"; do
     TOTAL=$((TOTAL + 1))
     echo ""
     echo "--- [$TOTAL/${#REPOS[@]}] $ORG/$repo ---"
 
-    if ! git clone --depth 1 "https://github.com/$ORG/$repo.git" "$TMPDIR/$repo" 2>/dev/null; then
+    if [[ "$GIT_HISTORY" == true ]]; then
+        CLONE_ARGS=(--filter=blob:none)
+    else
+        CLONE_ARGS=(--depth 1)
+    fi
+    if ! git clone "${CLONE_ARGS[@]}" "https://github.com/$ORG/$repo.git" "$TMPDIR/$repo" 2>/dev/null; then
         echo "  SKIP: clone failed"
         FAILED_CLONE+=("$repo")
         continue
     fi
 
     REPO_HIT=false
+    REPO_WARN=false
+    REPO_ERROR=false
 
     if [[ ${#BAD_FILES[@]} -gt 0 || ${#IOC_FILES[@]} -gt 0 ]]; then
         SCAN_ARGS=(--root "$TMPDIR/$repo")
@@ -126,20 +200,32 @@ for repo in "${REPOS[@]}"; do
             SCAN_ARGS+=(--ioc-file "$ioc")
         done
 
-        if ! python3 "$SCRIPT_DIR/scan_npm.py" "${SCAN_ARGS[@]}"; then
-            REPO_HIT=true
-        fi
+        STATUS=0
+        python3 "$SCRIPT_DIR/scan_npm.py" "${SCAN_ARGS[@]}" || STATUS=$?
+        classify_exit "$STATUS"
     fi
 
-    if [[ "$TANSTACK_HUNT" == true ]]; then
-        if ! python3 "$SCRIPT_DIR/hunt_tanstack_2026_05.py" --root "$TMPDIR/$repo"; then
+    if [[ -n "$HUNT_SCRIPT" ]]; then
+        STATUS=0
+        python3 "$HUNT_SCRIPT" --root "$TMPDIR/$repo" || STATUS=$?
+        classify_exit "$STATUS"
+    fi
+
+    if [[ "$GIT_HISTORY" == true ]]; then
+        COMMIT_HITS="$(check_git_history "$TMPDIR/$repo")"
+        if [[ -n "$COMMIT_HITS" ]]; then
+            echo "$COMMIT_HITS"
             REPO_HIT=true
         fi
     fi
 
     if [[ "$REPO_HIT" == true ]]; then
-        HITS=$((HITS + 1))
         HIT_REPOS+=("$repo")
+    elif [[ "$REPO_WARN" == true ]]; then
+        WARN_REPOS+=("$repo")
+    fi
+    if [[ "$REPO_ERROR" == true ]]; then
+        ERROR_REPOS+=("$repo")
     fi
 done
 
@@ -149,9 +235,27 @@ echo "========================================="
 echo "SCAN SUMMARY for $ORG"
 echo "========================================="
 echo "Total repos scanned: $TOTAL"
-echo "Repos with hits:     ${#HIT_REPOS[@]}"
+echo "Repos with critical hits: ${#HIT_REPOS[@]}"
 if [[ ${#HIT_REPOS[@]} -gt 0 ]]; then
     for r in "${HIT_REPOS[@]}"; do
+        echo "  - $r"
+    done
+fi
+if [[ ${#WARN_REPOS[@]} -gt 0 ]]; then
+    echo "Repos with warnings only: ${#WARN_REPOS[@]}"
+    for r in "${WARN_REPOS[@]}"; do
+        echo "  - $r"
+    done
+fi
+if [[ ${#SUSPICIOUS_DESC[@]} -gt 0 ]]; then
+    echo "Suspicious repo descriptions: ${#SUSPICIOUS_DESC[@]}"
+    for r in "${SUSPICIOUS_DESC[@]}"; do
+        echo "  - $r"
+    done
+fi
+if [[ ${#ERROR_REPOS[@]} -gt 0 ]]; then
+    echo "Repos with scan errors: ${#ERROR_REPOS[@]}"
+    for r in "${ERROR_REPOS[@]}"; do
         echo "  - $r"
     done
 fi
@@ -163,7 +267,13 @@ if [[ ${#FAILED_CLONE[@]} -gt 0 ]]; then
 fi
 echo "========================================="
 
-if [[ ${#HIT_REPOS[@]} -gt 0 ]]; then
+if [[ ${#HIT_REPOS[@]} -gt 0 || ${#SUSPICIOUS_DESC[@]} -gt 0 ]]; then
     exit 1
+fi
+if [[ ${#ERROR_REPOS[@]} -gt 0 || ${#FAILED_CLONE[@]} -gt 0 ]]; then
+    exit 2
+fi
+if [[ ${#WARN_REPOS[@]} -gt 0 ]]; then
+    exit 3
 fi
 exit 0

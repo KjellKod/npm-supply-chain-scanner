@@ -1,0 +1,12 @@
+Kind	Value	Severity	Description
+file	Math_Symbol.js	critical	malicious payload filename
+file	math_init.js	critical	malicious payload filename variant
+file	setup.mjs	warning	dropper filename (legit setup.mjs files exist, confirm via hash)
+sha256	54dc7ea54a1317cca0e890a2770630cf7fa6c97813e0cb9d2caa93012b350668	critical	setup.mjs dropper hash
+sha256	fd3ca4007b225fdf8de7af4345a19179d5efa8c4bb9205f88cda806e5684b1eb	critical	setup.mjs community-spread variant hash
+sha256	9fc2570b7cef51c1b8df116d144d11ff4096357be7d2c4c6367cfc2509cf1bcc	critical	Math_Symbol.js / math_init.js payload hash
+string	"preinstall": "node setup.mjs"	critical	malicious preinstall hook
+string	node setup.mjs	warning	dropper invocation variant
+string	npm-cache.com	critical	fallback exfiltration domain
+string	Shai-Hulud: Here We Go Again	critical	campaign marker / exfil repo description
+string	0xE1f2395ee43e45A1556EC6438a88c31B83493103	critical	attacker Ethereum smart contract

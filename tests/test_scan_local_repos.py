@@ -52,7 +52,8 @@ class ScanLocalReposTests(unittest.TestCase):
 
         self.assertEqual(1, result.returncode)
         self.assertEqual("", result.stderr)
-        self.assertIn("TANSTACK LOCAL REPO SCAN SUMMARY", result.stdout)
+        self.assertIn("LOCAL REPO SCAN SUMMARY", result.stdout)
+        self.assertIn("Hunter: ", result.stdout)
         self.assertIn("Repos discovered:  2", result.stdout)
         self.assertIn("Repos with hits:   1", result.stdout)
         self.assertIn(str(affected), result.stdout)

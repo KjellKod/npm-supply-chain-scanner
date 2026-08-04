@@ -1,12 +1,24 @@
 # npm-supply-chain-scanner
 
-Version 0.1.1
+Version 0.2.0
 
 Scan npm projects for known compromised packages. Checks `package.json` and `package-lock.json` files against a known-compromised package/version list.
 
 ## Run this now
 
-For the May 2026 TanStack incident, this checks a GitHub org or repo owner with the official affected package/version table plus the local IOC rules.
+For the August 2026 keyv / Shai-Hulud "Here We Go Again" incident, this checks a GitHub org or repo owner with the affected package/version table plus the IOC rules (payload filenames, SHA-256 hashes, preinstall hook, exfiltration domain). `--git-history` also checks commit metadata for the worm's "claude"-authored "chore: update config" commits, and the repo-description sweep for worm-created exfil repos runs automatically when the org repo list is fetched (not when specific repos are passed). Exact IOC strings live only in `2026-08-shai-hulud-iocs.tsv`; they are kept out of this README so the scanner's own repo does not trip an org sweep.
+
+```bash
+bash scan_org.sh \
+  --git-history \
+  --bad-file 2026-08-shai-hulud-here-we-go-again.txt \
+  --ioc-file 2026-08-shai-hulud-iocs.tsv \
+  <github-org-name>
+```
+
+Note: the secondary wave of that campaign spans 434+ packages; append them to the dated bad-file as the public list firms up.
+
+For the May 2026 TanStack incident:
 
 ```bash
 bash scan_org.sh \
@@ -50,6 +62,30 @@ bash scan_org.sh --bad-file bad-packages.txt <github-org-name> repo1 repo2
 ```
 
 This scans only `repo1` and `repo2` from `<github-org-name>`.
+
+### Raise the org repo cap
+
+`scan_org.sh` lists up to 500 repos by default and warns when the cap is hit. Raise it with `--limit`:
+
+```bash
+bash scan_org.sh --limit 1500 --bad-file bad-packages.txt <github-org-name>
+```
+
+### Check git history for commit-metadata IOCs
+
+`--git-history` clones with `--filter=blob:none` (full history, no file contents up front) instead of `--depth 1`, then checks every commit for known worm commit signatures (currently: author `claude`, subject `chore: update config`).
+
+```bash
+bash scan_org.sh --git-history --bad-file 2026-08-shai-hulud-here-we-go-again.txt <github-org-name>
+```
+
+### Run a one-off hunter against a GitHub org
+
+`--hunt SCRIPT` runs any hunter script (called as `python3 SCRIPT --root <checkout>`) against each cloned repo. `--tanstack-hunt` remains as an alias for `--hunt hunt_tanstack_2026_05.py`.
+
+```bash
+bash scan_org.sh --hunt hunt_tanstack_2026_05.py <github-org-name>
+```
 
 ### Keep cloned repos after scanning
 
@@ -124,6 +160,16 @@ Use a custom log directory when you want to keep outputs separate:
 
 ```bash
 python3 scan_local_repos.py --logs-dir tanstack-hunt-logs /path/to/directory-with-repos
+```
+
+`scan_local_repos.py` runs the TanStack hunter by default. Use `--hunter` (plus repeatable `--hunter-arg`) to run a different scanner per repo. The hunter is always invoked as `python3 HUNTER --root <repo> --max-file-mb N [hunter-args...]`, so it must accept those flags. Example with the durable scanner and the August 2026 files:
+
+```bash
+python3 scan_local_repos.py \
+  --hunter scan_npm.py \
+  --hunter-arg=--bad-file --hunter-arg=2026-08-shai-hulud-here-we-go-again.txt \
+  --hunter-arg=--ioc-file --hunter-arg=2026-08-shai-hulud-iocs.tsv \
+  /path/to/directory-with-repos
 ```
 
 Clean output:
@@ -226,13 +272,37 @@ Kind    Value   Severity    Description
 string  example.com critical    example network IOC
 file    payload.js  critical    payload filename
 path    .vscode/setup.mjs   warning reported persistence path
+sha256  54dc7ea54a1317cca0e890a2770630cf7fa6c97813e0cb9d2caa93012b350668   critical    known payload hash
 ```
+
+Supported kinds:
+
+- `string` -- substring match in text files (lockfiles, manifests, common text suffixes) under `--max-file-mb`.
+- `file` -- exact basename match at any depth.
+- `path` -- path suffix match.
+- `sha256` -- SHA-256 content match against every file under `--max-file-mb`, regardless of name or extension. Catches renamed payloads.
+
+The scanner also always flags `preinstall`/`install` scripts that invoke a bare local script file (`node dropper.mjs`, `bun dropper.js`) as warnings, since that is the standard install-time dropper pattern.
+
+Note on `bun.lockb`: the binary bun lockfile is scanned best-effort with text matching, which usually cannot see name/version pairs stored as separate strings. Prefer repos that commit the text `bun.lock`, or convert with `bun bun.lockb > bun.lock` before scanning.
+
+Note on docs quoting IOCs: `string` rules match any text file, including markdown. Defang IOC strings in advisories and writeups (for example `npm-cache[.]com`) or they will trip the scan.
 
 ## Exit codes
 
+`scan_npm.py`:
+
 - `0` -- no compromised packages found
-- `1` -- compromised packages detected
+- `1` -- critical findings detected
 - `2` -- usage error or missing dependencies
+- `3` -- warning-severity findings only (heuristics, noisy filename rules)
+
+`scan_org.sh`:
+
+- `0` -- all repos clean
+- `1` -- critical findings or suspicious repo descriptions
+- `2` -- usage error, repo-list failure, clone failures, or scanner crashes
+- `3` -- warning-only findings
 
 ## Adding new compromised packages
 

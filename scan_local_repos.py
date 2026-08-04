@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Discover locally cloned Git repos under one or more directories and run the
-TanStack incident hunter against each repo.
+Discover locally cloned Git repos under one or more directories and run an
+incident hunter script against each repo (default: the TanStack hunter).
 """
 
 import argparse
@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-HUNTER = SCRIPT_DIR / "hunt_tanstack_2026_05.py"
+DEFAULT_HUNTER = SCRIPT_DIR / "hunt_tanstack_2026_05.py"
 SKIP_DISCOVERY_DIRS = {".git", "node_modules", "__pycache__"}
 
 
@@ -46,14 +46,15 @@ def log_path_for(logs_dir, repo):
     return logs_dir / f"{safe_name}-{digest}.log"
 
 
-def run_hunter(repo, max_file_mb):
+def run_hunter(hunter, repo, max_file_mb, hunter_args):
     command = [
         sys.executable,
-        str(HUNTER),
+        str(hunter),
         "--root",
         str(repo),
         "--max-file-mb",
         str(max_file_mb),
+        *hunter_args,
     ]
     return subprocess.run(
         command,
@@ -75,12 +76,23 @@ def print_block(text, indent="    "):
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(
-        description="Recursively find local Git repos and run the TanStack incident hunter on each one."
+        description="Recursively find local Git repos and run an incident hunter on each one."
     )
     parser.add_argument(
         "directories",
         nargs="+",
         help="One or more directories to recursively search for Git repos.",
+    )
+    parser.add_argument(
+        "--hunter",
+        default=str(DEFAULT_HUNTER),
+        help="Hunter script to run per repo. Default: hunt_tanstack_2026_05.py.",
+    )
+    parser.add_argument(
+        "--hunter-arg",
+        action="append",
+        default=[],
+        help="Extra argument passed to the hunter (repeatable), e.g. --hunter-arg=--bad-file --hunter-arg=FILE.",
     )
     parser.add_argument(
         "--logs-dir",
@@ -118,6 +130,11 @@ def main(argv=None):
             print(f"Error: not a directory: {root}", file=sys.stderr)
         return 2
 
+    hunter = Path(args.hunter).expanduser().resolve()
+    if not hunter.is_file():
+        print(f"Error: hunter script not found: {hunter}", file=sys.stderr)
+        return 2
+
     logs_dir = Path(args.logs_dir).expanduser().resolve()
     logs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -126,17 +143,19 @@ def main(argv=None):
     errors = []
 
     for repo in repos:
-        result = run_hunter(repo, args.max_file_mb)
+        result = run_hunter(hunter, repo, args.max_file_mb, args.hunter_arg)
         repo_log = log_path_for(logs_dir, repo)
         repo_log.write_text(result.stdout, encoding="utf-8")
 
-        if result.returncode == 1:
+        # Hunter exit-code contract: 0 clean, 1 critical findings, 3 warnings only.
+        if result.returncode in (1, 3):
             findings.append((repo, repo_log, result.stdout))
         elif result.returncode != 0:
             errors.append((repo, repo_log, result.returncode, result.stdout))
 
-    print("TANSTACK LOCAL REPO SCAN SUMMARY")
-    print("================================")
+    print("LOCAL REPO SCAN SUMMARY")
+    print("=======================")
+    print(f"Hunter: {hunter}")
     print("Input directories:")
     for root in roots:
         print(f"- {root}")
